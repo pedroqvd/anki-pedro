@@ -3,7 +3,7 @@
   import { fetchCardsFromSheet, updateCardInSheet, addCardToSheet, deleteCardFromSheet, loadCachedCards, setCachedCards, getApiUrl, type Flashcard } from "./lib/googleSheets";
   import { calculateNextReview, type Grade } from "./lib/scheduler";
   import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic, type Area } from "./lib/edital";
-  import { getStreak, recordStudyToday, getWeeklyActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
+  import { getStreak, recordStudyToday, getWeeklyActivity, getAnnualActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
   import { processQueue, getPendingCount } from "./lib/offlineQueue";
   import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target, WifiOff, Download, Upload, Volume2, RotateCcw, Zap, PauseCircle, PlayCircle, Timer } from "lucide-svelte";
   import { marked } from 'marked';
@@ -13,7 +13,7 @@
   let cards = $state<Flashcard[]>([]);
   let loading = $state(true);
   let activeTab = $state<'dashboard' | 'study' | 'add' | 'manage'>('dashboard');
-  let darkMode = $state(true);
+  let theme = $state('dark');
   let isOnline = $state(true);
   let isSaving = $state(false);
 
@@ -22,6 +22,7 @@
   let weeklyActivity = $state<number[]>([0,0,0,0,0,0,0]);
   let weekDayLabels = $state<string[]>(['Seg','Ter','Qua','Qui','Sex','Sáb','Dom']);
   let accuracyRate = $state(0);
+  let annualActivity = $state<{date: string, count: number}[]>([]);
   
   let pendingToday = $derived(
     cards.filter(c => new Date(c.nextReview) <= new Date()).length
@@ -44,6 +45,7 @@
 
   // ================= Aba Estudar =================
   let selectedTopic = $state<string>('Todos');
+  let customFilter = $state<string>('');
   let currentCardIndex = $state(0);
   let showBack = $state(false);
   let isCramming = $state(false);
@@ -52,10 +54,17 @@
   let topics = $derived(['Todos', ...new Set(cards.map(c => getDisciplineFromPath(c.topic)))]);
   let filteredCards = $derived(
     cards.filter(c => {
-      const isDue = new Date(c.nextReview) <= new Date();
       const isSuspended = c.interval === -1;
+      if (isSuspended) return false;
+
+      if (customFilter) {
+        const q = customFilter.toLowerCase();
+        return c.front.toLowerCase().includes(q) || c.topic.toLowerCase().includes(q);
+      }
+
+      const isDue = new Date(c.nextReview) <= new Date();
       const matchesTopic = selectedTopic === 'Todos' || getDisciplineFromPath(c.topic) === selectedTopic;
-      return (isDue || isCramming) && matchesTopic && !isSuspended;
+      return (isDue || isCramming) && matchesTopic;
     })
   );
   let currentCard = $derived(filteredCards[currentCardIndex]);
@@ -105,20 +114,19 @@
 
   // ================= Ciclo de Vida =================
   onMount(() => {
-    // Carregar preferência de tema ou tema do sistema
+    // Carregar preferência de tema
     const savedTheme = localStorage.getItem('anki_theme');
-    if (savedTheme === 'light') {
-      darkMode = false;
-    } else if (savedTheme === 'dark') {
-      darkMode = true;
+    if (savedTheme) {
+      theme = savedTheme;
     } else {
-      darkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
 
     // Carregar gamificação
     const s = getStreak();
     streak = s.currentStreak;
     weeklyActivity = getWeeklyActivity();
+    annualActivity = getAnnualActivity();
     weekDayLabels = getWeekDayLabels();
     accuracyRate = getAccuracyRate();
 
@@ -181,9 +189,9 @@
     }
   }
 
-  function toggleTheme() {
-    darkMode = !darkMode;
-    localStorage.setItem('anki_theme', darkMode ? 'dark' : 'light');
+  function setTheme(t: string) {
+    theme = t;
+    localStorage.setItem('anki_theme', theme);
   }
 
   // ================= Lógica de Estudo =================
@@ -433,7 +441,39 @@
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
-        const importedCards = JSON.parse(e.target?.result as string);
+        const text = e.target?.result as string;
+
+        // Se não for JSON, tenta ler como TSV (formato padrão do Anki Desktop)
+        if (!text.trim().startsWith('[') && !text.trim().startsWith('{')) {
+          const lines = text.split('\n');
+          let added = 0;
+          for (const line of lines) {
+            const parts = line.split('\t'); // tab separated
+            if (parts.length >= 2) {
+              const front = parts[0].trim();
+              const back = parts[1].trim();
+              if (front && back) {
+                cards.push({
+                  id: "imported-" + Date.now() + Math.random(),
+                  front, back, topic: "Geral > Importado > " + file.name.replace(/\.[^/.]+$/, ""),
+                  interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
+                });
+                added++;
+              }
+            }
+          }
+          if (added > 0) {
+            saveLocal();
+            showToast(`${added} cartões TSV importados com sucesso!`);
+            silentSync();
+          } else {
+            showToast("Nenhum cartão válido encontrado (use separação por Tab).");
+          }
+          input.value = '';
+          return;
+        }
+
+        const importedCards = JSON.parse(text);
         if (Array.isArray(importedCards)) {
           // Merge imported cards by ID
           const newCards = [...cards];
@@ -483,7 +523,7 @@
   }
 </script>
 
-<main class="app-container" class:dark={darkMode} class:light={!darkMode}>
+<main class="app-container {theme}">
   <!-- Toast -->
   <div class="toast" class:toast-visible={toastVisible}>
     <CheckCircle size={18} /><span>{toastMessage}</span>
@@ -520,34 +560,37 @@
         <div class="spinner"></div>
         <p class="text-muted">Sincronizando com a Nuvem...</p>
       </div>
-
-    <!-- ==================== DASHBOARD ==================== -->
-    {#if activeTab === 'dashboard'}
+    {:else if activeTab === 'dashboard'}
       <Dashboard 
         {isOnline}
-        {darkMode}
+        {theme}
         {streak}
         {pendingToday}
         {cards}
         {accuracyRate}
         {weeklyActivity}
+        {annualActivity}
         {weekDayLabels}
         {disciplineCoverage}
-        {toggleTheme}
+        {setTheme}
       />
 
     <!-- ==================== ESTUDAR ==================== -->
     {:else if activeTab === 'study'}
-      <div class="tab-header">
-        <select class="input select-sm" bind:value={selectedTopic} onchange={() => {currentCardIndex = 0; showBack = false; lastAnswered = null;}}>
+      <div class="tab-header" style="flex-wrap: wrap;">
+        <select class="input select-sm" bind:value={selectedTopic} disabled={!!customFilter} onchange={() => {currentCardIndex = 0; showBack = false; lastAnswered = null;}}>
           {#each topics as topic}
             <option value={topic}>{topic}</option>
           {/each}
         </select>
-        <button class="btn-icon" class:active={isCramming} onclick={() => {isCramming = !isCramming; currentCardIndex = 0; showBack = false; lastAnswered = null;}} title="Modo Intensivão (Ignorar Data)" style="background: {isCramming ? 'var(--accent)' : 'var(--bg-card)'}; border: 1px solid var(--bg-card-border); color: {isCramming ? '#fff' : 'inherit'}">
+        <button class="btn-icon" class:active={isCramming} disabled={!!customFilter} onclick={() => {isCramming = !isCramming; currentCardIndex = 0; showBack = false; lastAnswered = null;}} title="Modo Intensivão (Ignorar Data)" style="background: {isCramming ? 'var(--accent)' : 'var(--bg-card)'}; border: 1px solid var(--bg-card-border); color: {isCramming ? '#fff' : 'inherit'}">
           <Zap size={18} />
         </button>
         <div class="badge">{Math.max(0, filteredCards.length - currentCardIndex)} pendentes</div>
+        
+        <div style="width: 100%; display: flex; gap: 10px; margin-top: 5px;">
+          <input class="input" style="margin-bottom:0; flex:1;" placeholder="Simulado: Digite uma tag (ex: #cesgranrio) ou termo" bind:value={customFilter} oninput={() => {currentCardIndex=0; showBack=false; lastAnswered = null;}} />
+        </div>
       </div>
 
       <div style="display:flex; justify-content:center; gap: 10px; margin-bottom: 15px;">
@@ -691,8 +734,8 @@
             <Search size={18}/>
             <input class="input search-input" placeholder="Buscar..." bind:value={searchQuery} />
           </div>
-          <label class="btn-icon" title="Importar Backup JSON" style="background: var(--bg-card); border: 1px solid var(--bg-card-border); cursor: pointer; display: flex; align-items: center; justify-content: center;">
-            <input type="file" accept=".json" style="display: none;" onchange={handleImport} />
+          <label class="btn-icon" title="Importar JSON ou TSV/TXT (Padrão do Anki)" style="background: var(--bg-card); border: 1px solid var(--bg-card-border); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+            <input type="file" accept=".json,.csv,.txt,.tsv" style="display: none;" onchange={handleImport} />
             <Upload size={18} color="var(--info)" />
           </label>
           <button class="btn-icon" onclick={exportData} title="Exportar Backup JSON" style="background: var(--bg-card); border: 1px solid var(--bg-card-border);">
@@ -792,6 +835,48 @@
     --info: #2563eb; --info-bg: rgba(37,99,235,0.08); --info-text: #2563eb;
     --streak-bg: rgba(249,115,22,0.08);
     --streak-border: rgba(249,115,22,0.25);
+  }
+
+  .oled {
+    --bg-base: #000000;
+    --bg-gradient: #000000;
+    --bg-card: rgba(20,20,20,0.8);
+    --bg-card-border: #222222;
+    --bg-input: #111111;
+    --bg-input-border: #333333;
+    --bg-nav: #000000;
+    --text-primary: #ffffff;
+    --text-secondary: #aaaaaa;
+    --text-muted: #666666;
+    --accent: #8b5cf6;
+    --accent-glow: rgba(139,92,246,0.15);
+    --accent-text: #c4b5fd;
+    --err: #ef4444; --err-bg: rgba(239,68,68,0.12); --err-text: #fca5a5;
+    --warn: #f97316; --warn-bg: rgba(249,115,22,0.12); --warn-text: #fdba74;
+    --ok: #10b981; --ok-bg: rgba(16,185,129,0.12); --ok-text: #6ee7b7;
+    --info: #3b82f6; --info-bg: rgba(59,130,246,0.12); --info-text: #93c5fd;
+    --streak-bg: rgba(249,115,22,0.1); --streak-border: rgba(249,115,22,0.3);
+  }
+
+  .dracula {
+    --bg-base: #282a36;
+    --bg-gradient: linear-gradient(160deg, #282a36 0%, #44475a 100%);
+    --bg-card: #44475a;
+    --bg-card-border: #6272a4;
+    --bg-input: #282a36;
+    --bg-input-border: #6272a4;
+    --bg-nav: rgba(40,42,54,0.95);
+    --text-primary: #f8f8f2;
+    --text-secondary: #f1fa8c;
+    --text-muted: #6272a4;
+    --accent: #bd93f9;
+    --accent-glow: rgba(189,147,249,0.25);
+    --accent-text: #ff79c6;
+    --err: #ff5555; --err-bg: rgba(255,85,85,0.12); --err-text: #ff5555;
+    --warn: #ffb86c; --warn-bg: rgba(255,184,108,0.12); --warn-text: #ffb86c;
+    --ok: #50fa7b; --ok-bg: rgba(80,250,123,0.12); --ok-text: #50fa7b;
+    --info: #8be9fd; --info-bg: rgba(139,233,253,0.12); --info-text: #8be9fd;
+    --streak-bg: rgba(255,184,108,0.1); --streak-border: rgba(255,184,108,0.3);
   }
 
   /* ================================================================

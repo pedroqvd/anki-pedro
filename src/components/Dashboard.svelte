@@ -4,26 +4,28 @@
 
   let { 
     isOnline, 
-    darkMode, 
+    theme, 
     streak, 
     pendingToday, 
     cards, 
     accuracyRate, 
-    weeklyActivity, 
+    weeklyActivity,
+    annualActivity, 
     weekDayLabels, 
     disciplineCoverage, 
-    toggleTheme 
+    setTheme 
   } = $props<{
     isOnline: boolean;
-    darkMode: boolean;
+    theme: string;
     streak: number;
     pendingToday: number;
     cards: Flashcard[];
     accuracyRate: number;
     weeklyActivity: number[];
+    annualActivity: {date: string, count: number}[];
     weekDayLabels: string[];
     disciplineCoverage: any[];
-    toggleTheme: () => void;
+    setTheme: (t: string) => void;
   }>();
 
   // 1. Gráfico de Previsão (Forecasting)
@@ -79,9 +81,12 @@
     </div>
     <h1 class="dash-title">Painel de Estudos</h1>
   </div>
-  <button class="btn-icon theme-toggle" onclick={toggleTheme}>
-    {#if darkMode}<Sun size={22}/>{:else}<Moon size={22}/>{/if}
-  </button>
+  <select class="input select-sm" style="max-width: 140px; margin-bottom: 0;" onchange={(e) => setTheme((e.target as HTMLSelectElement).value)}>
+    <option value="dark" selected={theme === 'dark'}>Padrão Escuro</option>
+    <option value="light" selected={theme === 'light'}>Padrão Claro</option>
+    <option value="oled" selected={theme === 'oled'}>OLED Black</option>
+    <option value="dracula" selected={theme === 'dracula'}>Dracula</option>
+  </select>
 </div>
 
 <!-- Conquistas (Achievements) -->
@@ -181,6 +186,36 @@
     </div>
   </div>
 </div>
+
+<div class="card" style="margin-top: 15px;">
+  <h3 class="section-title">Mapa de Calor (Último Ano)</h3>
+  <div class="heatmap-container">
+    {#each annualActivity as day}
+      <div class="heatmap-cell" 
+           title="{day.date}: {day.count} revisões" 
+           style="background: {day.count === 0 ? 'var(--bg-input)' : `rgba(139,92,246,${Math.min(0.2 + day.count * 0.1, 1)})`}">
+      </div>
+    {/each}
+  </div>
+</div>
+
+<style>
+  .heatmap-container {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    height: 105px;
+    gap: 3px;
+    overflow-x: auto;
+    padding-bottom: 5px;
+  }
+  .heatmap-cell {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+</style>
 
 {#if bancas.length > 0}
   <div class="card" style="margin-top: 15px;">

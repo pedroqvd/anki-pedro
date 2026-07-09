@@ -99,9 +99,9 @@ export function recordCardReviewed(): void {
     const t = today();
     activity[t] = (activity[t] || 0) + 1;
     
-    // Limpa dados com mais de 30 dias para não poluir o localStorage
+    // Limpa dados com mais de 365 dias para o mapa de calor anual
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 30);
+    cutoff.setDate(cutoff.getDate() - 365);
     const cutoffStr = cutoff.toISOString().split('T')[0];
     for (const key of Object.keys(activity)) {
       if (key < cutoffStr) delete activity[key];
@@ -151,4 +151,22 @@ export function getWeekDayLabels(): string[] {
     labels.push(dayNames[d.getDay()]);
   }
   return labels;
+}
+
+export function getAnnualActivity(): { date: string, count: number }[] {
+  try {
+    const raw = localStorage.getItem(ACTIVITY_KEY);
+    const activity: DailyActivity = raw ? JSON.parse(raw) : {};
+    
+    const result: { date: string, count: number }[] = [];
+    for (let i = 364; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      result.push({ date: key, count: activity[key] || 0 });
+    }
+    return result;
+  } catch {
+    return [];
+  }
 }

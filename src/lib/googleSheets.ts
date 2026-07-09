@@ -1,47 +1,55 @@
-// Interface mockada para conectar com a API REST do Google Sheets futuramente
-// No mundo real, usaríamos a biblioteca do Google APIs ou REST puro usando fetch()
-
 export interface Flashcard {
-  id: string;
-  front: string;
-  back: string;
-  interval: number;
-  ease: number;
-  nextReview: string; // ISO date string
+  id: string;         // Usaremos o número da linha como ID
+  front: string;      // Coluna A (Pergunta)
+  back: string;       // Coluna B (Resposta)
+  interval: number;   // Coluna C (Intervalo em dias)
+  ease: number;       // Fator de facilidade (default 2.5)
+  nextReview: string; // Coluna D (Próxima revisão - ISO String)
   rowNumber: number;  // Para saber qual linha atualizar
 }
 
-const SHEET_ID = import.meta.env.VITE_GOOGLE_SHEETS_ID || "COLOQUE_SEU_SHEET_ID_AQUI";
-const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || "COLOQUE_SUA_API_KEY_AQUI";
+// O Vite injeta as variáveis de ambiente que começam com VITE_
+// Se não houver, ele usa uma string vazia para não quebrar a compilação.
+const API_URL = import.meta.env.VITE_APPS_SCRIPT_URL || "";
 
 export async function fetchCardsFromSheet(): Promise<Flashcard[]> {
-  console.log(`[Google Sheets API] Fetching from ${SHEET_ID}...`);
-  
-  // MOCK DATA para podermos testar a UI enquanto não configuramos as chaves
-  return [
-    {
-      id: "1",
-      front: "O que é WebAssembly?",
-      back: "É um formato de instrução binária para uma máquina virtual baseada em pilha.",
-      interval: 0,
-      ease: 2.5,
-      nextReview: new Date().toISOString(),
-      rowNumber: 2
-    },
-    {
-      id: "2",
-      front: "Como o Google Sheets atua nesta arquitetura?",
-      back: "Ele atua como um banco de dados relacional gratuito na nuvem via API REST.",
-      interval: 1,
-      ease: 2.5,
-      nextReview: new Date().toISOString(),
-      rowNumber: 3
-    }
-  ];
+  if (!API_URL) {
+    console.warn("⚠️ URL do Apps Script não configurada. Mostrando Mock de teste.");
+    return [
+      { id: "2", front: "Exemplo Mock 1", back: "Configure a VITE_APPS_SCRIPT_URL no seu Vercel!", interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: 2 }
+    ];
+  }
+
+  try {
+    const response = await fetch(API_URL);
+    if (!response.ok) throw new Error("Falha ao buscar as cartas");
+    const data = await response.json();
+    return data as Flashcard[];
+  } catch (error) {
+    console.error("[Google Sheets API Error]", error);
+    return [];
+  }
 }
 
 export async function updateCardInSheet(card: Flashcard): Promise<void> {
-  // Chamada REST para atualizar apenas as colunas de "interval", "ease" e "nextReview" da "rowNumber"
-  console.log(`[Google Sheets API] Updating row ${card.rowNumber}... Novo intervalo: ${card.interval} dias.`);
-  return Promise.resolve();
+  if (!API_URL) {
+    console.warn("⚠️ URL não configurada. Atualização ignorada (Mock mode).");
+    return;
+  }
+
+  try {
+    await fetch(API_URL, {
+      method: 'POST',
+      body: JSON.stringify(card),
+      // Não usamos Headers "application/json" porque requisições CORS complexas (preflight)
+      // costumam falhar no Google Apps Script Web App de forma nativa.
+      // O text/plain passa direto (simple request) e processamos como JSON lá no script.
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      }
+    });
+    console.log(`[Google Sheets API] Row ${card.rowNumber} atualizada!`);
+  } catch (error) {
+    console.error("[Google Sheets API Error] Falha ao atualizar a carta.", error);
+  }
 }

@@ -150,6 +150,31 @@
     return `${content}\n===\n${back}`;
   }
 
+  function insertCloze() {
+    if (frontTextarea) {
+      const start = frontTextarea.selectionStart;
+      const end = frontTextarea.selectionEnd;
+      if (start !== end) {
+        const selected = newFront.substring(start, end);
+        newFront = newFront.substring(0, start) + `{{${selected}}}` + newFront.substring(end);
+        
+        // Restore focus and selection
+        setTimeout(() => {
+          frontTextarea.focus();
+          frontTextarea.setSelectionRange(start, start + selected.length + 4);
+        }, 0);
+      } else {
+        newFront += '{{}}';
+        setTimeout(() => {
+          frontTextarea.focus();
+          frontTextarea.setSelectionRange(newFront.length - 2, newFront.length - 2);
+        }, 0);
+      }
+    } else {
+      newFront += '{{}}';
+    }
+  }
+
   function submit() {
     if (isSaving) return;
     if (!selectedArea || !selectedDiscipline || !selectedTopicName) {

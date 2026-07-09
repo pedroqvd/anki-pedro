@@ -11,6 +11,7 @@
   import BottomNav from './components/BottomNav.svelte';
   import ManageTab from './components/ManageTab.svelte';
   import AddTab from './components/AddTab.svelte';
+  import StudyTab from './components/StudyTab.svelte';
 
   // ================= Estado Global =================
   let cards = $state<Flashcard[]>([]);
@@ -47,30 +48,7 @@
   );
 
   // ================= Aba Estudar =================
-  let selectedTopic = $state<string>('Todos');
-  let customFilter = $state<string>('');
-  let currentCardIndex = $state(0);
-  let showBack = $state(false);
-  let isCramming = $state(false);
-  let lastAnswered = $state<{ cardIndex: number; oldState: Flashcard } | null>(null);
-  
-  let topics = $derived(['Todos', ...new Set(cards.map(c => getDisciplineFromPath(c.topic)))]);
-  let filteredCards = $derived(
-    cards.filter(c => {
-      const isSuspended = c.interval === -1;
-      if (isSuspended) return false;
-
-      if (customFilter) {
-        const q = customFilter.toLowerCase();
-        return c.front.toLowerCase().includes(q) || c.topic.toLowerCase().includes(q);
-      }
-
-      const isDue = new Date(c.nextReview) <= new Date();
-      const matchesTopic = selectedTopic === 'Todos' || getDisciplineFromPath(c.topic) === selectedTopic;
-      return (isDue || isCramming) && matchesTopic;
-    })
-  );
-  let currentCard = $derived(filteredCards[currentCardIndex]);
+  // O estado do Estudo (filtros, pomodoro, filas) foi extraído para StudyTab.svelte
 
   // ================= Aba Adicionar =================
   async function handleSaveCards(cardsToAdd: Flashcard[]) {
@@ -204,30 +182,7 @@
     window.speechSynthesis.speak(msg);
   }
 
-  async function handleAnswer(grade: Grade) {
-    if (!currentCard || isSaving) return;
-    
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel(); // Parar fala ao responder
-    }
-
-    lastAnswered = { cardIndex: currentCardIndex, oldState: { ...currentCard } };
-
-    const { interval, ease, nextReview } = calculateNextReview({
-      interval: currentCard.interval,
-      ease: currentCard.ease,
-      nextReview: new Date(currentCard.nextReview)
-    }, grade);
-
-    currentCard.interval = interval;
-    currentCard.ease = ease;
-    currentCard.nextReview = nextReview.toISOString();
-    
-    const cardToUpdate = { ...currentCard };
-    showBack = false;
-    currentCardIndex++;
-
-    // Gamificação
+  function handleStudyAnswer(card: Flashcard, grade: Grade) {
     recordCardReviewed();
     recordAnswer(grade);
     const s = recordStudyToday();
@@ -235,83 +190,17 @@
     weeklyActivity = getWeeklyActivity();
     accuracyRate = getAccuracyRate();
 
-    if (currentCardIndex >= filteredCards.length) showToast("Revisões concluídas! 🎉");
     saveLocal();
-    updateCardInSheet(cardToUpdate);
+    updateCardInSheet(card);
   }
 
-  async function undoLastAnswer() {
-    if (!lastAnswered) return;
-    const { cardIndex, oldState } = lastAnswered;
-    const idx = cards.findIndex(c => c.id === oldState.id);
-    if (idx !== -1) {
-      cards[idx] = { ...oldState };
-      currentCardIndex = cardIndex;
-      showBack = false;
-      saveLocal();
-      updateCardInSheet(cards[idx]);
-      showToast("Resposta desfeita!");
-    }
-    lastAnswered = null;
+  function handleStudyUndo(oldCard: Flashcard) {
+    saveLocal();
+    updateCardInSheet(oldCard);
+    showToast("Resposta desfeita!");
   }
-
-  // ================= Gestos Mobile (Swipe) =================
-  let touchStartX = $state(0);
-  let touchMoveX = $state(0);
-  let swipeOffset = $state(0);
-
-  function handleTouchStart(e: TouchEvent) {
-    if (!showBack) return;
-    touchStartX = e.touches[0].clientX;
-  }
-  function handleTouchMove(e: TouchEvent) {
-    if (!showBack || touchStartX === 0) return;
-    touchMoveX = e.touches[0].clientX;
-    swipeOffset = touchMoveX - touchStartX;
-  }
-  function handleTouchEnd() {
-    if (!showBack || touchStartX === 0) return;
-    if (swipeOffset > 100) {
-      handleAnswer(3); // Fácil
-    } else if (swipeOffset < -100) {
-      handleAnswer(0); // Errei
-    }
-    touchStartX = 0;
-    touchMoveX = 0;
-    swipeOffset = 0;
-  }
-
-  // ================= Pomodoro =================
-  let pomodoroTime = $state(25 * 60);
-  let pomodoroActive = $state(false);
-  let pomodoroInterval: ReturnType<typeof setInterval> | null = null;
-  let pomodoroFormatted = $derived(`${Math.floor(pomodoroTime/60).toString().padStart(2, '0')}:${(pomodoroTime%60).toString().padStart(2, '0')}`);
-
-  function togglePomodoro() {
-    if (pomodoroActive) {
-      if (pomodoroInterval) clearInterval(pomodoroInterval);
-      pomodoroActive = false;
-    } else {
-      pomodoroActive = true;
-      pomodoroInterval = setInterval(() => {
-        if (pomodoroTime > 0) {
-          pomodoroTime--;
-        } else {
-          if (pomodoroInterval) clearInterval(pomodoroInterval);
-          pomodoroActive = false;
-          showToast("Pomodoro concluído! Faça uma pausa.");
-          pomodoroTime = 25 * 60;
-        }
-      }, 1000);
-    }
-  }
-
-  function resetPomodoro() {
-    if (pomodoroInterval) clearInterval(pomodoroInterval);
-    pomodoroActive = false;
-    pomodoroTime = 25 * 60;
-  }
-
+  // Gestos e Pomodoro movidos para StudyTab
+  
   // ================= Lógica de Adição =================
   // handleAdd moved to AddTab.svelte
 
@@ -495,88 +384,12 @@
 
     <!-- ==================== ESTUDAR ==================== -->
     {:else if activeTab === 'study'}
-      <div class="tab-header" style="flex-wrap: wrap;">
-        <select class="input select-sm" bind:value={selectedTopic} disabled={!!customFilter} onchange={() => {currentCardIndex = 0; showBack = false; lastAnswered = null;}}>
-          {#each topics as topic}
-            <option value={topic}>{topic}</option>
-          {/each}
-        </select>
-        <button class="btn-icon" class:active={isCramming} disabled={!!customFilter} onclick={() => {isCramming = !isCramming; currentCardIndex = 0; showBack = false; lastAnswered = null;}} title="Modo Intensivão (Ignorar Data)" style="background: {isCramming ? 'var(--accent)' : 'var(--bg-card)'}; border: 1px solid var(--bg-card-border); color: {isCramming ? '#fff' : 'inherit'}">
-          <Zap size={18} />
-        </button>
-        <div class="badge">{Math.max(0, filteredCards.length - currentCardIndex)} pendentes</div>
-        
-        <div style="width: 100%; display: flex; gap: 10px; margin-top: 5px;">
-          <input class="input" style="margin-bottom:0; flex:1;" placeholder="Simulado: Digite uma tag (ex: #cesgranrio) ou termo" bind:value={customFilter} oninput={() => {currentCardIndex=0; showBack=false; lastAnswered = null;}} />
-        </div>
-      </div>
-
-      <div style="display:flex; justify-content:center; gap: 10px; margin-bottom: 15px;">
-        <button class="badge" style="background: {pomodoroActive ? 'var(--accent)' : 'var(--bg-card)'}; color: {pomodoroActive ? '#fff' : 'var(--text-primary)'}; border: 1px solid {pomodoroActive ? 'var(--accent)' : 'var(--bg-card-border)'}; cursor: pointer; display:flex; align-items:center; gap: 6px; font-size: 1rem; padding: 6px 12px;" onclick={togglePomodoro}>
-          <Timer size={16}/> {pomodoroFormatted}
-        </button>
-        {#if pomodoroTime !== 25 * 60}
-          <button class="btn-icon" style="background: var(--bg-card);" onclick={resetPomodoro} title="Resetar Pomodoro"><RotateCcw size={16}/></button>
-        {/if}
-      </div>
-
-      {#if currentCard}
-        <div class="scene">
-          <div class="flashcard" class:is-flipped={showBack} ontouchstart={handleTouchStart} ontouchmove={handleTouchMove} ontouchend={handleTouchEnd} style={showBack && swipeOffset !== 0 ? `transform: rotateY(180deg) translateX(${swipeOffset}px) rotate(${swipeOffset/15}deg); transition: none;` : ''}>
-            <div class="card-face card-front card">
-              <span class="topic-tag">{getDisciplineFromPath(currentCard.topic)}</span>
-              <div class="card-question">
-                {#if currentCard.front.match(/^[a-e]\) /mi)}
-                  {@html marked.parse(currentCard.front).replace(/([a-e]\) .*)/gi, '<div style="padding: 8px; margin: 4px 0; border: 1px solid var(--bg-card-border); border-radius: 6px;">$1</div>')}
-                {:else}
-                  {@html marked.parse(currentCard.front.replace(/\{\{(.*?)\}\}/g, '[...]'))}
-                {/if}
-              </div>
-              <button class="btn-icon tts-btn" onclick={(e) => { e.stopPropagation(); readText(currentCard.front.replace(/\{\{(.*?)\}\}/g, '')); }} title="Ouvir Pergunta">
-                <Volume2 size={20}/>
-              </button>
-              <p class="text-muted text-sm">Toque para revelar a resposta</p>
-              <button class="btn-primary" onclick={() => showBack = true}>Mostrar Resposta</button>
-            </div>
-            <div class="card-face card-back card">
-              <div class="card-answer">
-                {#if currentCard.front.includes('{{')}
-                  <div class="cloze-reveal" style="font-size: 1.1rem; margin-bottom: 10px;">
-                    {@html marked.parse(currentCard.front.replace(/\{\{(.*?)\}\}/g, '<span style="color:var(--accent); font-weight:bold; background: rgba(0, 122, 255, 0.1); padding: 0 4px; border-radius: 4px;">$1</span>'))}
-                  </div>
-                  <hr style="margin: 10px 0; border: 1px solid var(--bg-card-border);" />
-                {/if}
-                {@html marked.parse(currentCard.back)}
-              </div>
-              <button class="btn-icon tts-btn" onclick={(e) => { e.stopPropagation(); readText(currentCard.back); }} title="Ouvir Resposta">
-                <Volume2 size={20}/>
-              </button>
-              <div class="grade-grid">
-                <button class="btn-grade btn-err" onclick={() => handleAnswer(0)}>Errei</button>
-                <button class="btn-grade btn-hard" onclick={() => handleAnswer(1)}>Difícil</button>
-                <button class="btn-grade btn-good" onclick={() => handleAnswer(2)}>Bom</button>
-                <button class="btn-grade btn-easy" onclick={() => handleAnswer(3)}>Fácil</button>
-              </div>
-              {#if lastAnswered}
-                <button class="btn-icon undo-btn" onclick={(e) => { e.stopPropagation(); undoLastAnswer(); }} title="Desfazer">
-                  <RotateCcw size={16}/> Desfazer
-                </button>
-              {/if}
-            </div>
-          </div>
-        </div>
-      {:else}
-        <div class="card center-col" style="min-height:280px">
-          <Sparkles size={40}/>
-          <h3>Tudo limpo!</h3>
-          <p class="text-muted">Nenhuma revisão pendente para <strong>{selectedTopic}</strong>.</p>
-          {#if cards.some(c => c.interval === -1 && (selectedTopic === 'Todos' || getDisciplineFromPath(c.topic) === selectedTopic))}
-            <p class="text-muted text-sm" style="color: var(--warn); margin-top: 10px;">
-              Aviso: Você possui cartões pausados neste filtro.
-            </p>
-          {/if}
-        </div>
-      {/if}
+      <StudyTab 
+        bind:cards
+        onAnswer={handleStudyAnswer}
+        onUndo={handleStudyUndo}
+        {showToast}
+      />
 
     <!-- ==================== ADICIONAR ==================== -->
     {:else if activeTab === 'add'}

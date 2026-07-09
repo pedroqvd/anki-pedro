@@ -1,5 +1,6 @@
 <script lang="ts">
   import { EDITAL } from '../lib/edital';
+  import { createWorker } from 'tesseract.js';
 
   interface FlashcardBase {
     id: string;
@@ -18,7 +19,7 @@
     showToast: (msg: string) => void
   }>();
 
-  let addMode = $state<'single'|'errorBook'|'bulk'>('single');
+  let addMode = $state<'single'|'errorBook'|'bulk'|'scanner'>('single');
   let newFront = $state('');
   let newBack = $state('');
   let errorQuestion = $state('');
@@ -26,6 +27,9 @@
   let errorTheory = $state('');
   let bulkText = $state('');
   let createReversed = $state(false);
+  
+  let ocrProgress = $state(0);
+  let isScanning = $state(false);
   let selectedArea = $state('');
   let selectedDiscipline = $state('');
   let selectedTopicName = $state('');
@@ -36,6 +40,58 @@
   let availableTopics = $derived(
     availableDisciplines.find(d => d.name === selectedDiscipline)?.topics || []
   );
+
+  async function handleImageUpload(e: Event) {
+    const file = (e.target as HTMLInputElement).files?.[0];
+    if (!file) return;
+    await processImage(file);
+  }
+
+  async function handlePaste(e: ClipboardEvent) {
+    if (addMode !== 'scanner') return;
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.indexOf('image') !== -1) {
+        const file = item.getAsFile();
+        if (file) await processImage(file);
+        break;
+      }
+    }
+  }
+
+  async function processImage(file: File) {
+    isScanning = true;
+    ocrProgress = 0;
+    try {
+      const worker = await createWorker('por', 1, {
+        logger: m => {
+          if (m.status === 'recognizing text') {
+            ocrProgress = Math.round(m.progress * 100);
+          }
+        }
+      });
+      const { data: { text } } = await worker.recognize(file);
+      await worker.terminate();
+
+      bulkText = parseOcrText(text);
+      addMode = 'bulk';
+      showToast("Leitura concluída! Revise o texto.");
+    } catch (err) {
+      console.error(err);
+      showToast("Erro ao processar a imagem.");
+    } finally {
+      isScanning = false;
+    }
+  }
+
+  function parseOcrText(rawText: string) {
+    // Tenta arrumar quebras de linha indesejadas
+    let text = rawText.replace(/([^\.\?\!:])\n/g, '$1 '); 
+    // Tenta separar as alternativas (a, b, c, d, e)
+    text = text.replace(/([a-eA-E][\.\)])/g, '\n$1');
+    return text.trim() + '\n\n===\n\n[Gabarito/Justificativa]';
+  }
 
   function submit() {
     if (isSaving) return;
@@ -114,6 +170,8 @@
   }
 </script>
 
+<svelte:window onpaste={handlePaste} />
+
 <div class="card form-container" style="padding-bottom: 2rem;">
   <h3 class="section-title">Novo Cartão</h3>
 
@@ -148,8 +206,9 @@
   <!-- Segmented Control Redesign -->
   <div class="segmented-control">
     <button class:active={addMode === 'single'} onclick={() => addMode = 'single'}>Básico</button>
-    <button class:active={addMode === 'errorBook'} onclick={() => addMode = 'errorBook'}>Caderno Erros</button>
-    <button class:active={addMode === 'bulk'} onclick={() => addMode = 'bulk'}>Em Lote</button>
+    <button class:active={addMode === 'errorBook'} onclick={() => addMode = 'errorBook'}>Erros</button>
+    <button class:active={addMode === 'bulk'} onclick={() => addMode = 'bulk'}>Lote</button>
+    <button class:active={addMode === 'scanner'} onclick={() => addMode = 'scanner'}>Scanner IA</button>
   </div>
 
   <div class="form-body">
@@ -172,6 +231,24 @@
 
       <label style="color: var(--ok-text)">Teoria / Justificativa</label>
       <textarea class="input success-input" placeholder="A taxa básica de juros é a Selic. A TJLP é de longo prazo." bind:value={errorTheory}></textarea>
+      
+    {:else if addMode === 'scanner'}
+      <div class="scanner-dropzone">
+        {#if isScanning}
+          <div class="scanner-progress">
+            <div class="spinner"></div>
+            <p>Lendo imagem... {ocrProgress}%</p>
+          </div>
+        {:else}
+          <p style="margin-bottom: 10px; color: var(--text-secondary); font-weight: 500;">
+            Dê <strong>Ctrl + V</strong> para colar um print da questão, ou envie uma imagem:
+          </p>
+          <label class="btn-primary" style="display: inline-block; text-align: center; cursor: pointer; padding: 10px 20px;">
+            Selecionar Imagem
+            <input type="file" accept="image/*" style="display: none;" onchange={handleImageUpload} />
+          </label>
+        {/if}
+      </div>
       
     {:else}
       <label>Cartões (Formato: Pergunta === Resposta)</label>
@@ -223,6 +300,23 @@
   
   .success-input { border-color: rgba(16, 185, 129, 0.3); height: 100px; }
   .success-input:focus { border-color: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
+
+  .scanner-dropzone {
+    border: 2px dashed var(--bg-card-border);
+    border-radius: 16px;
+    padding: 40px 20px;
+    text-align: center;
+    background: rgba(0,0,0,0.02);
+    transition: background 0.3s, border-color 0.3s;
+  }
+  .scanner-dropzone:hover {
+    border-color: var(--accent);
+    background: var(--accent-glow);
+  }
+  .scanner-progress {
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    color: var(--accent); font-weight: 600;
+  }
 
   .cloze-btn {
     background: var(--accent-glow);

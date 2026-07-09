@@ -945,7 +945,7 @@
     border-radius: 10px;
     padding: 0.85rem 1rem;
     font-family: inherit;
-    font-size: 0.95rem;
+    font-size: 1rem;
     width: 100%;
     box-sizing: border-box;
     transition: border 0.2s, background 0.3s;
@@ -1020,12 +1020,12 @@
   .badge { background: var(--accent-glow); color: var(--accent-text); padding: 5px 12px; border-radius: 50px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
 
   .scene { perspective: 1200px; height: 380px; width: 100%; }
-  .flashcard { width: 100%; height: 100%; position: relative; transition: transform 0.6s; transform-style: preserve-3d; }
+  .flashcard { width: 100%; height: 100%; position: relative; transition: transform 0.6s; transform-style: preserve-3d; touch-action: pan-y; }
   .is-flipped { transform: rotateY(180deg); }
   .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
   .card-back { transform: rotateY(180deg); }
-  .card-question { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1.5rem; white-space: pre-wrap; overflow-y: auto; max-height: 200px; padding: 0 10px; width: 100%; text-align: left; }
-  .card-answer { font-size: 1.1rem; line-height: 1.6; margin-bottom: 1.5rem; color: var(--text-secondary); white-space: pre-wrap; overflow-y: auto; max-height: 200px; padding: 0 10px; width: 100%; text-align: left; }
+  .card-question { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1.5rem; white-space: pre-wrap; overflow-y: auto; max-height: 200px; padding: 0 10px; width: 100%; text-align: left; word-break: break-word; }
+  .card-answer { font-size: 1.1rem; line-height: 1.6; margin-bottom: 1.5rem; color: var(--text-secondary); white-space: pre-wrap; overflow-y: auto; max-height: 200px; padding: 0 10px; width: 100%; text-align: left; word-break: break-word; }
   
   .card-question :global(p), .card-answer :global(p) { margin: 0 0 0.5em 0; }
   .card-question :global(img), .card-answer :global(img) { max-width: 100%; border-radius: 8px; }

@@ -156,9 +156,9 @@
     {#if addMode === 'single'}
       <label style="display: flex; align-items: center; justify-content: space-between;">
         <span>Pergunta (Frente)</span>
-        <button class="badge" style="border:none; cursor:pointer;" onclick={() => newFront += '{{}}'}>[..] Cloze</button>
+        <button class="cloze-btn" onclick={() => newFront += '{{}}'} title="Adicionar lacuna (Cloze)">[..] Ocultar Palavra</button>
       </label>
-      <textarea class="input" placeholder="Digite a pergunta..." bind:value={newFront}></textarea>
+      <textarea class="input" placeholder="Digite a pergunta... (use {{palavra}} para ocultar)" bind:value={newFront}></textarea>
 
       <label>Resposta (Verso)</label>
       <textarea class="input" placeholder="Digite a resposta..." bind:value={newBack}></textarea>
@@ -180,9 +180,9 @@
 
     {#if addMode === 'single' || addMode === 'bulk'}
       <label class="checkbox-label">
-        <input type="checkbox" bind:checked={createReversed}>
+        <input type="checkbox" bind:checked={createReversed} class="hidden-checkbox">
         <div class="checkbox-box"></div>
-        <span>Criar versão reversa (Verso === Frente) também</span>
+        <span>Criar Cartão Reverso (Verso ➔ Frente)</span>
       </label>
     {/if}
 
@@ -224,18 +224,32 @@
   .success-input { border-color: rgba(16, 185, 129, 0.3); height: 100px; }
   .success-input:focus { border-color: var(--ok); box-shadow: 0 0 0 3px var(--ok-bg); }
 
+  .cloze-btn {
+    background: var(--accent-glow);
+    color: var(--accent-text);
+    border: none;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .cloze-btn:active { background: var(--accent); color: #fff; }
+
   .checkbox-label {
     display: flex;
     align-items: center;
     gap: 12px;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     margin-top: 1rem;
-    text-transform: none;
-    font-weight: 500;
+    text-transform: none; /* Override global label uppercase */
+    letter-spacing: normal;
+    font-weight: 600;
     color: var(--text-primary);
   }
-  .checkbox-label input { display: none; }
+  .hidden-checkbox { display: none !important; }
   .checkbox-box {
     width: 22px; height: 22px;
     border-radius: 6px;
@@ -243,16 +257,17 @@
     background: var(--bg-input);
     transition: all 0.2s;
     position: relative;
+    flex-shrink: 0;
   }
-  .checkbox-label input:checked + .checkbox-box {
+  .hidden-checkbox:checked + .checkbox-box {
     background: var(--accent);
     border-color: var(--accent);
   }
-  .checkbox-label input:checked + .checkbox-box::after {
+  .hidden-checkbox:checked + .checkbox-box::after {
     content: '';
     position: absolute;
     left: 6px; top: 2px;
-    width: 4px; height: 10px;
+    width: 5px; height: 10px;
     border: solid white;
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);

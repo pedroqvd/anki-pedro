@@ -1,0 +1,16 @@
+{
+  "name": "Personal Anki",
+  "short_name": "Anki Web",
+  "description": "Seu aplicativo de repetição espaçada integrado ao Google Sheets.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#3b82f6",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "192x192",
+      "type": "image/svg+xml"
+    }
+  ]
+}

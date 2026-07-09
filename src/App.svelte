@@ -5,7 +5,8 @@
   import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic, type Area } from "./lib/edital";
   import { getStreak, recordStudyToday, getWeeklyActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
   import { processQueue, getPendingCount } from "./lib/offlineQueue";
-  import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target, WifiOff, Download, Upload } from "lucide-svelte";
+  import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target, WifiOff, Download, Upload, Volume2, RotateCcw, Zap } from "lucide-svelte";
+  import { marked } from 'marked';
 
   // ================= Estado Global =================
   let cards = $state<Flashcard[]>([]);
@@ -44,13 +45,15 @@
   let selectedTopic = $state<string>('Todos');
   let currentCardIndex = $state(0);
   let showBack = $state(false);
+  let isCramming = $state(false);
+  let lastAnswered = $state<{ cardIndex: number; oldState: Flashcard } | null>(null);
   
   let topics = $derived(['Todos', ...new Set(cards.map(c => getDisciplineFromPath(c.topic)))]);
   let filteredCards = $derived(
     cards.filter(c => {
       const isDue = new Date(c.nextReview) <= new Date();
       const matchesTopic = selectedTopic === 'Todos' || getDisciplineFromPath(c.topic) === selectedTopic;
-      return isDue && matchesTopic;
+      return (isDue || isCramming) && matchesTopic;
     })
   );
   let currentCard = $derived(filteredCards[currentCardIndex]);
@@ -176,8 +179,18 @@
   }
 
   // ================= Lógica de Estudo =================
+  function readText(text: string) {
+    // Strip markdown before reading
+    const plainText = text.replace(/[#_*~`>\[\]\(\)]/g, '');
+    const u = new SpeechSynthesisUtterance(plainText);
+    u.lang = 'pt-BR';
+    speechSynthesis.speak(u);
+  }
+
   async function handleAnswer(grade: Grade) {
     if (!currentCard) return;
+    lastAnswered = { cardIndex: currentCardIndex, oldState: { ...currentCard } };
+
     const { interval, ease, nextReview } = calculateNextReview({
       interval: currentCard.interval,
       ease: currentCard.ease,
@@ -203,6 +216,21 @@
     if (currentCardIndex >= filteredCards.length) showToast("Revisões concluídas! 🎉");
     saveLocal();
     updateCardInSheet(cardToUpdate);
+  }
+
+  async function undoLastAnswer() {
+    if (!lastAnswered) return;
+    const { cardIndex, oldState } = lastAnswered;
+    const idx = cards.findIndex(c => c.id === oldState.id);
+    if (idx !== -1) {
+      cards[idx] = { ...oldState };
+      currentCardIndex = cardIndex;
+      showBack = false;
+      saveLocal();
+      updateCardInSheet(cards[idx]);
+      showToast("Resposta desfeita!");
+    }
+    lastAnswered = null;
   }
 
   // ================= Lógica de Adição =================
@@ -423,11 +451,14 @@
     <!-- ==================== ESTUDAR ==================== -->
     {:else if activeTab === 'study'}
       <div class="tab-header">
-        <select class="input select-sm" bind:value={selectedTopic} onchange={() => {currentCardIndex = 0; showBack = false;}}>
+        <select class="input select-sm" bind:value={selectedTopic} onchange={() => {currentCardIndex = 0; showBack = false; lastAnswered = null;}}>
           {#each topics as topic}
             <option value={topic}>{topic}</option>
           {/each}
         </select>
+        <button class="btn-icon" class:active={isCramming} onclick={() => {isCramming = !isCramming; currentCardIndex = 0; showBack = false; lastAnswered = null;}} title="Modo Intensivão (Ignorar Data)" style="background: {isCramming ? 'var(--accent)' : 'var(--bg-card)'}; border: 1px solid var(--bg-card-border); color: {isCramming ? '#fff' : 'inherit'}">
+          <Zap size={18} />
+        </button>
         <div class="badge">{Math.max(0, filteredCards.length - currentCardIndex)} pendentes</div>
       </div>
 
@@ -436,18 +467,29 @@
           <div class="flashcard" class:is-flipped={showBack}>
             <div class="card-face card-front card">
               <span class="topic-tag">{getDisciplineFromPath(currentCard.topic)}</span>
-              <h2 class="card-question">{currentCard.front}</h2>
+              <div class="card-question">{@html marked.parse(currentCard.front)}</div>
+              <button class="btn-icon tts-btn" onclick={(e) => { e.stopPropagation(); readText(currentCard.front); }} title="Ouvir Pergunta">
+                <Volume2 size={20}/>
+              </button>
               <p class="text-muted text-sm">Toque para revelar a resposta</p>
               <button class="btn-primary" onclick={() => showBack = true}>Mostrar Resposta</button>
             </div>
             <div class="card-face card-back card">
-              <p class="card-answer">{currentCard.back}</p>
+              <div class="card-answer">{@html marked.parse(currentCard.back)}</div>
+              <button class="btn-icon tts-btn" onclick={(e) => { e.stopPropagation(); readText(currentCard.back); }} title="Ouvir Resposta">
+                <Volume2 size={20}/>
+              </button>
               <div class="grade-grid">
                 <button class="btn-grade btn-err" onclick={() => handleAnswer(0)}>Errei</button>
                 <button class="btn-grade btn-hard" onclick={() => handleAnswer(1)}>Difícil</button>
                 <button class="btn-grade btn-good" onclick={() => handleAnswer(2)}>Bom</button>
                 <button class="btn-grade btn-easy" onclick={() => handleAnswer(3)}>Fácil</button>
               </div>
+              {#if lastAnswered}
+                <button class="btn-icon undo-btn" onclick={(e) => { e.stopPropagation(); undoLastAnswer(); }} title="Desfazer">
+                  <RotateCcw size={16}/> Desfazer
+                </button>
+              {/if}
             </div>
           </div>
         </div>
@@ -741,8 +783,16 @@
   .is-flipped { transform: rotateY(180deg); }
   .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
   .card-back { transform: rotateY(180deg); }
-  .card-question { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1.5rem; white-space: pre-wrap; }
-  .card-answer { font-size: 1.1rem; line-height: 1.6; margin-bottom: 1.5rem; color: var(--text-secondary); white-space: pre-wrap; }
+  .card-question { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1.5rem; white-space: pre-wrap; overflow-y: auto; max-height: 200px; padding: 0 10px; width: 100%; text-align: left; }
+  .card-answer { font-size: 1.1rem; line-height: 1.6; margin-bottom: 1.5rem; color: var(--text-secondary); white-space: pre-wrap; overflow-y: auto; max-height: 200px; padding: 0 10px; width: 100%; text-align: left; }
+  
+  .card-question :global(p), .card-answer :global(p) { margin: 0 0 0.5em 0; }
+  .card-question :global(img), .card-answer :global(img) { max-width: 100%; border-radius: 8px; }
+  .card-question :global(strong), .card-answer :global(strong) { color: var(--accent); }
+  .card-question :global(ul), .card-answer :global(ul) { padding-left: 1.5rem; margin: 0.5em 0; }
+  
+  .tts-btn { position: absolute; top: 1rem; right: 1rem; color: var(--text-muted); }
+  .undo-btn { position: absolute; bottom: -40px; right: 0; background: var(--bg-card); color: var(--text-muted); font-size: 0.8rem; border-radius: 20px; padding: 4px 12px; gap: 4px; display: flex; align-items: center; border: 1px solid var(--bg-card-border); }
 
   .btn-primary {
     background: linear-gradient(135deg, var(--accent), #6d28d9);

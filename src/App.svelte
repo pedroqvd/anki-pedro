@@ -5,7 +5,7 @@
   import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic, type Area } from "./lib/edital";
   import { getStreak, recordStudyToday, getWeeklyActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
   import { processQueue, getPendingCount } from "./lib/offlineQueue";
-  import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target } from "lucide-svelte";
+  import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target, WifiOff, Download } from "lucide-svelte";
 
   // ================= Estado Global =================
   let cards = $state<Flashcard[]>([]);
@@ -157,7 +157,10 @@
 
   async function silentSync() {
     const data = await fetchCardsFromSheet();
-    if (data && data.length > 0) cards = data;
+    if (data && data.length > 0) {
+      cards = data;
+      if (currentCardIndex >= filteredCards.length) currentCardIndex = Math.max(0, filteredCards.length - 1);
+    }
   }
 
   function toggleTheme() {
@@ -211,13 +214,14 @@
     saveLocal();
     const f = newFront, b = newBack, t = topicPath;
     newFront = ''; newBack = '';
-    showToast('Cartão salvo na nuvem!');
+    showToast('Cartão salvo localmente!');
     await addCardToSheet(f, b, t);
     silentSync();
   }
 
   // ================= Lógica de Gerenciamento =================
   async function handleDelete(rowNumber: number, id: string) {
+    if (!confirm('Tem certeza que deseja apagar este cartão permanentemente?')) return;
     cards = cards.filter(c => c.id !== id);
     saveLocal();
     showToast('Cartão deletado!');
@@ -225,6 +229,16 @@
       await deleteCardFromSheet(rowNumber);
       silentSync();
     }
+  }
+
+  function exportData() {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(cards, null, 2));
+    const downloadAnchorNode = document.createElement('a');
+    downloadAnchorNode.setAttribute("href", dataStr);
+    downloadAnchorNode.setAttribute("download", "anki_backup.json");
+    document.body.appendChild(downloadAnchorNode);
+    downloadAnchorNode.click();
+    downloadAnchorNode.remove();
   }
 
   async function saveEdit() {
@@ -288,7 +302,12 @@
     {:else if activeTab === 'dashboard'}
       <div class="dash-header">
         <div>
-          <p class="text-muted text-sm">Bem-vindo de volta</p>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <p class="text-muted text-sm" style="margin: 0">Bem-vindo de volta</p>
+            {#if !isOnline}
+              <span class="badge" style="background: var(--err-bg); color: var(--err-text); display: flex; align-items: center; gap: 4px;"><WifiOff size={12}/> Offline</span>
+            {/if}
+          </div>
           <h1 class="dash-title">Painel de Estudos</h1>
         </div>
         <button class="btn-icon theme-toggle" onclick={toggleTheme}>
@@ -360,7 +379,7 @@
             <option value={topic}>{topic}</option>
           {/each}
         </select>
-        <div class="badge">{filteredCards.length - currentCardIndex} pendentes</div>
+        <div class="badge">{Math.max(0, filteredCards.length - currentCardIndex)} pendentes</div>
       </div>
 
       {#if currentCard}
@@ -436,9 +455,14 @@
     <!-- ==================== GERENCIAR ==================== -->
     {:else if activeTab === 'manage'}
       <div class="list-container">
-        <div class="search-bar">
-          <Search size={18}/>
-          <input class="input search-input" placeholder="Buscar..." bind:value={searchQuery} />
+        <div style="display: flex; gap: 10px; margin-bottom: 0.5rem;">
+          <div class="search-bar" style="flex: 1">
+            <Search size={18}/>
+            <input class="input search-input" placeholder="Buscar..." bind:value={searchQuery} />
+          </div>
+          <button class="btn-icon" onclick={exportData} title="Exportar Backup JSON" style="background: var(--bg-card); border: 1px solid var(--bg-card-border);">
+            <Download size={18} color="var(--info)" />
+          </button>
         </div>
 
         {#if filteredManageCards.length === 0}
@@ -657,7 +681,7 @@
   .tab-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem; }
   .badge { background: var(--accent-glow); color: var(--accent-text); padding: 5px 12px; border-radius: 50px; font-size: 0.75rem; font-weight: 700; white-space: nowrap; }
 
-  .scene { perspective: 1200px; min-height: 340px; width: 100%; }
+  .scene { perspective: 1200px; height: 380px; width: 100%; }
   .flashcard { width: 100%; height: 100%; position: relative; transition: transform 0.6s; transform-style: preserve-3d; }
   .is-flipped { transform: rotateY(180deg); }
   .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }

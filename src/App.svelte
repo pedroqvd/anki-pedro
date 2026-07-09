@@ -5,8 +5,9 @@
   import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic, type Area } from "./lib/edital";
   import { getStreak, recordStudyToday, getWeeklyActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
   import { processQueue, getPendingCount } from "./lib/offlineQueue";
-  import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target, WifiOff, Download, Upload, Volume2, RotateCcw, Zap, PauseCircle, PlayCircle } from "lucide-svelte";
+  import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target, WifiOff, Download, Upload, Volume2, RotateCcw, Zap, PauseCircle, PlayCircle, Timer } from "lucide-svelte";
   import { marked } from 'marked';
+  import Dashboard from './components/Dashboard.svelte';
 
   // ================= Estado Global =================
   let cards = $state<Flashcard[]>([]);
@@ -60,9 +61,12 @@
   let currentCard = $derived(filteredCards[currentCardIndex]);
 
   // ================= Aba Adicionar =================
-  let addMode = $state<'single'|'bulk'>('single');
+  let addMode = $state<'single'|'bulk'|'errorBook'>('single');
   let newFront = $state('');
   let newBack = $state('');
+  let errorQuestion = $state('');
+  let errorMistake = $state('');
+  let errorTheory = $state('');
   let createReversed = $state(false);
   let bulkText = $state('');
   let selectedArea = $state('');
@@ -263,6 +267,37 @@
     swipeOffset = 0;
   }
 
+  // ================= Pomodoro =================
+  let pomodoroTime = $state(25 * 60);
+  let pomodoroActive = $state(false);
+  let pomodoroInterval: ReturnType<typeof setInterval> | null = null;
+  let pomodoroFormatted = $derived(`${Math.floor(pomodoroTime/60).toString().padStart(2, '0')}:${(pomodoroTime%60).toString().padStart(2, '0')}`);
+
+  function togglePomodoro() {
+    if (pomodoroActive) {
+      if (pomodoroInterval) clearInterval(pomodoroInterval);
+      pomodoroActive = false;
+    } else {
+      pomodoroActive = true;
+      pomodoroInterval = setInterval(() => {
+        if (pomodoroTime > 0) {
+          pomodoroTime--;
+        } else {
+          if (pomodoroInterval) clearInterval(pomodoroInterval);
+          pomodoroActive = false;
+          showToast("Pomodoro concluído! Faça uma pausa.");
+          pomodoroTime = 25 * 60;
+        }
+      }, 1000);
+    }
+  }
+
+  function resetPomodoro() {
+    if (pomodoroInterval) clearInterval(pomodoroInterval);
+    pomodoroActive = false;
+    pomodoroTime = 25 * 60;
+  }
+
   // ================= Lógica de Adição =================
   async function handleAdd() {
     if (isSaving) return;
@@ -294,6 +329,18 @@
           interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
         });
       }
+    } else if (addMode === 'errorBook') {
+      if (!errorQuestion || !errorMistake || !errorTheory) {
+        showToast("Preencha todos os campos do Caderno de Erros!");
+        isSaving = false;
+        return;
+      }
+      const backContent = `**Onde eu errei:**\n${errorMistake}\n\n**Teoria / Justificativa:**\n${errorTheory}`;
+      cardsToAdd.push({
+        id: "temp-" + Date.now() + Math.random(),
+        front: errorQuestion, back: backContent, topic: topicPath,
+        interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
+      });
     } else {
       // Bulk Mode
       if (!bulkText) {
@@ -331,6 +378,7 @@
     cards = [...cards, ...cardsToAdd];
     saveLocal();
     newFront = ''; newBack = ''; bulkText = '';
+    errorQuestion = ''; errorMistake = ''; errorTheory = '';
     showToast(`${cardsToAdd.length} cartões salvos!`);
 
     for (const c of cardsToAdd) {
@@ -466,7 +514,6 @@
       </div>
     </div>
   {/if}
-
   <div class="content">
     {#if loading}
       <div class="card center-col" style="min-height:250px">
@@ -475,77 +522,19 @@
       </div>
 
     <!-- ==================== DASHBOARD ==================== -->
-    {:else if activeTab === 'dashboard'}
-      <div class="dash-header">
-        <div>
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <p class="text-muted text-sm" style="margin: 0">Bem-vindo de volta</p>
-            {#if !isOnline}
-              <span class="badge" style="background: var(--err-bg); color: var(--err-text); display: flex; align-items: center; gap: 4px;"><WifiOff size={12}/> Offline</span>
-            {/if}
-          </div>
-          <h1 class="dash-title">Painel de Estudos</h1>
-        </div>
-        <button class="btn-icon theme-toggle" onclick={toggleTheme}>
-          {#if darkMode}<Sun size={22}/>{:else}<Moon size={22}/>{/if}
-        </button>
-      </div>
-
-      <!-- Streak -->
-      {#if streak > 0}
-        <div class="streak-banner">
-          <Flame size={22} color="#f97316"/>
-          <span><strong>{streak}</strong> {streak === 1 ? 'dia' : 'dias'} seguidos estudando!</span>
-        </div>
-      {/if}
-
-      <!-- Stat Cards -->
-      <div class="stat-grid">
-        <div class="card stat-card">
-          <Target size={20} class="stat-icon"/>
-          <span class="stat-number">{pendingToday}</span>
-          <span class="stat-label">Pendentes Hoje</span>
-        </div>
-        <div class="card stat-card">
-          <BookOpen size={20} class="stat-icon"/>
-          <span class="stat-number">{cards.length}</span>
-          <span class="stat-label">Total de Cartões</span>
-        </div>
-        <div class="card stat-card">
-          <TrendingUp size={20} class="stat-icon"/>
-          <span class="stat-number">{accuracyRate}%</span>
-          <span class="stat-label">Taxa de Acerto</span>
-        </div>
-      </div>
-
-      <!-- Weekly Chart -->
-      <div class="card">
-        <h3 class="section-title">Atividade Semanal</h3>
-        <div class="chart">
-          {#each weeklyActivity as count, i}
-            <div class="chart-bar-col">
-              <div class="chart-bar" style="height: {Math.max(count * 8, 4)}px"></div>
-              <span class="chart-label">{weekDayLabels[i]}</span>
-            </div>
-          {/each}
-        </div>
-      </div>
-
-      <!-- Edital Coverage -->
-      <div class="card">
-        <h3 class="section-title">Cobertura do Edital</h3>
-        {#each disciplineCoverage as disc}
-          <div class="coverage-row">
-            <div class="coverage-header">
-              <span class="coverage-name">{disc.name}</span>
-              <span class="coverage-count">{disc.coveredTopics}/{disc.totalTopics}</span>
-            </div>
-            <div class="progress-track">
-              <div class="progress-fill" style="width: {disc.totalTopics > 0 ? (disc.coveredTopics / disc.totalTopics) * 100 : 0}%"></div>
-            </div>
-          </div>
-        {/each}
-      </div>
+    {#if activeTab === 'dashboard'}
+      <Dashboard 
+        {isOnline}
+        {darkMode}
+        {streak}
+        {pendingToday}
+        {cards}
+        {accuracyRate}
+        {weeklyActivity}
+        {weekDayLabels}
+        {disciplineCoverage}
+        {toggleTheme}
+      />
 
     <!-- ==================== ESTUDAR ==================== -->
     {:else if activeTab === 'study'}
@@ -561,20 +550,43 @@
         <div class="badge">{Math.max(0, filteredCards.length - currentCardIndex)} pendentes</div>
       </div>
 
+      <div style="display:flex; justify-content:center; gap: 10px; margin-bottom: 15px;">
+        <button class="badge" style="background: {pomodoroActive ? 'var(--accent)' : 'var(--bg-card)'}; color: {pomodoroActive ? '#fff' : 'var(--text-primary)'}; border: 1px solid {pomodoroActive ? 'var(--accent)' : 'var(--bg-card-border)'}; cursor: pointer; display:flex; align-items:center; gap: 6px; font-size: 1rem; padding: 6px 12px;" onclick={togglePomodoro}>
+          <Timer size={16}/> {pomodoroFormatted}
+        </button>
+        {#if pomodoroTime !== 25 * 60}
+          <button class="btn-icon" style="background: var(--bg-card);" onclick={resetPomodoro} title="Resetar Pomodoro"><RotateCcw size={16}/></button>
+        {/if}
+      </div>
+
       {#if currentCard}
         <div class="scene">
           <div class="flashcard" class:is-flipped={showBack} ontouchstart={handleTouchStart} ontouchmove={handleTouchMove} ontouchend={handleTouchEnd} style={showBack && swipeOffset !== 0 ? `transform: rotateY(180deg) translateX(${swipeOffset}px) rotate(${swipeOffset/15}deg); transition: none;` : ''}>
             <div class="card-face card-front card">
               <span class="topic-tag">{getDisciplineFromPath(currentCard.topic)}</span>
-              <div class="card-question">{@html marked.parse(currentCard.front)}</div>
-              <button class="btn-icon tts-btn" onclick={(e) => { e.stopPropagation(); readText(currentCard.front); }} title="Ouvir Pergunta">
+              <div class="card-question">
+                {#if currentCard.front.match(/^[a-e]\) /mi)}
+                  {@html marked.parse(currentCard.front).replace(/([a-e]\) .*)/gi, '<div style="padding: 8px; margin: 4px 0; border: 1px solid var(--bg-card-border); border-radius: 6px;">$1</div>')}
+                {:else}
+                  {@html marked.parse(currentCard.front.replace(/\{\{(.*?)\}\}/g, '[...]'))}
+                {/if}
+              </div>
+              <button class="btn-icon tts-btn" onclick={(e) => { e.stopPropagation(); readText(currentCard.front.replace(/\{\{(.*?)\}\}/g, '')); }} title="Ouvir Pergunta">
                 <Volume2 size={20}/>
               </button>
               <p class="text-muted text-sm">Toque para revelar a resposta</p>
               <button class="btn-primary" onclick={() => showBack = true}>Mostrar Resposta</button>
             </div>
             <div class="card-face card-back card">
-              <div class="card-answer">{@html marked.parse(currentCard.back)}</div>
+              <div class="card-answer">
+                {#if currentCard.front.includes('{{')}
+                  <div class="cloze-reveal" style="font-size: 1.1rem; margin-bottom: 10px;">
+                    {@html marked.parse(currentCard.front.replace(/\{\{(.*?)\}\}/g, '<span style="color:var(--accent); font-weight:bold; background: rgba(0, 122, 255, 0.1); padding: 0 4px; border-radius: 4px;">$1</span>'))}
+                  </div>
+                  <hr style="margin: 10px 0; border: 1px solid var(--bg-card-border);" />
+                {/if}
+                {@html marked.parse(currentCard.back)}
+              </div>
               <button class="btn-icon tts-btn" onclick={(e) => { e.stopPropagation(); readText(currentCard.back); }} title="Ouvir Resposta">
                 <Volume2 size={20}/>
               </button>
@@ -634,7 +646,8 @@
         {/if}
 
         <div style="display:flex; gap:10px; margin-top:10px;">
-          <button class="btn-primary" style="flex:1; background: {addMode === 'single' ? 'var(--accent)' : 'var(--bg-card)'}; color: {addMode === 'single' ? '#fff' : 'var(--text-primary)'}" onclick={() => addMode = 'single'}>Um por vez</button>
+          <button class="btn-primary" style="flex:1; background: {addMode === 'single' ? 'var(--accent)' : 'var(--bg-card)'}; color: {addMode === 'single' ? '#fff' : 'var(--text-primary)'}" onclick={() => addMode = 'single'}>Básico</button>
+          <button class="btn-primary" style="flex:1; background: {addMode === 'errorBook' ? 'var(--accent)' : 'var(--bg-card)'}; color: {addMode === 'errorBook' ? '#fff' : 'var(--text-primary)'}" onclick={() => addMode = 'errorBook'}>Caderno Erros</button>
           <button class="btn-primary" style="flex:1; background: {addMode === 'bulk' ? 'var(--accent)' : 'var(--bg-card)'}; color: {addMode === 'bulk' ? '#fff' : 'var(--text-primary)'}" onclick={() => addMode = 'bulk'}>Em Lote</button>
         </div>
 
@@ -644,15 +657,26 @@
 
           <label>Resposta (Verso)</label>
           <textarea class="input" placeholder="Digite a resposta..." bind:value={newBack}></textarea>
+        {:else if addMode === 'errorBook'}
+          <label>Enunciado da Questão</label>
+          <textarea class="input" style="height: 100px" placeholder="Qual a taxa básica de juros?" bind:value={errorQuestion}></textarea>
+
+          <label style="color: var(--err-text)">Onde escorreguei (A Pegadinha)</label>
+          <textarea class="input" style="height: 80px; border-color: var(--err-text)" placeholder="Achei que era a TJLP..." bind:value={errorMistake}></textarea>
+
+          <label style="color: var(--success)">Teoria / Justificativa</label>
+          <textarea class="input" style="height: 100px; border-color: var(--success)" placeholder="A taxa básica de juros é a Selic. A TJLP é de longo prazo." bind:value={errorTheory}></textarea>
         {:else}
           <label>Cartões (Formato: Pergunta === Resposta)</label>
           <textarea class="input" style="height: 150px" placeholder="Ex:\nO que é a Selic? === Taxa básica de juros\nCapital da França === Paris" bind:value={bulkText}></textarea>
         {/if}
 
-        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size: 0.9rem; margin-top:10px;">
-          <input type="checkbox" bind:checked={createReversed} style="width:16px;height:16px;">
-          Criar versão reversa (Verso === Frente) também
-        </label>
+        {#if addMode === 'single' || addMode === 'bulk'}
+          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size: 0.9rem; margin-top:10px;">
+            <input type="checkbox" bind:checked={createReversed} style="width:16px;height:16px;">
+            Criar versão reversa (Verso === Frente) também
+          </label>
+        {/if}
 
         <button class="btn-primary" onclick={handleAdd} disabled={isSaving} style="margin-top:15px;">
           {isSaving ? 'Salvando...' : 'Salvar na Nuvem'}

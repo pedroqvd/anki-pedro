@@ -42,6 +42,12 @@
     })
   );
   
+  $effect(() => {
+    if (currentCardIndex >= filteredCards.length && filteredCards.length > 0) {
+      currentCardIndex = Math.max(0, filteredCards.length - 1);
+    }
+  });
+  
   let currentCard = $derived(filteredCards[currentCardIndex]);
 
   // ================= Pomodoro =================
@@ -171,7 +177,42 @@
     onUndo(oldState);
     lastAnswered = null;
   }
+
+  // ================= Atalhos de Teclado =================
+  function handleKeydown(e: KeyboardEvent) {
+    if (activeElementIsInput()) return; // não disparar se tiver digitando no input de busca
+
+    if (!showBack) {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        showBack = true;
+      }
+    } else {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        handleAnswer(2); // Bom
+      } else if (e.key === '1') {
+        handleAnswer(0); // Errei
+      } else if (e.key === '2') {
+        handleAnswer(1); // Difícil
+      } else if (e.key === '3') {
+        handleAnswer(2); // Bom
+      } else if (e.key === '4') {
+        handleAnswer(3); // Fácil
+      } else if (e.code === 'KeyZ' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        undoLastAnswer();
+      }
+    }
+  }
+
+  function activeElementIsInput() {
+    const active = document.activeElement;
+    return active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.tagName === 'SELECT');
+  }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="tab-header" style="flex-wrap: wrap;">
   <select class="input select-sm" bind:value={selectedTopic} disabled={!!customFilter} onchange={() => {currentCardIndex = 0; showBack = false; lastAnswered = null;}}>
@@ -203,7 +244,9 @@
     <div class="flashcard" class:is-flipped={showBack} ontouchstart={handleTouchStart} ontouchmove={handleTouchMove} ontouchend={handleTouchEnd} style={showBack && swipeOffset !== 0 ? `transform: rotateY(180deg) translateX(${swipeOffset}px) rotate(${swipeOffset/15}deg); transition: none;` : ''}>
       
       <!-- FRENTE -->
-      <div class="card-face card-front card">
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="card-face card-front card" onclick={() => showBack = true} style="cursor: pointer;">
         <span class="topic-tag">{getDisciplineFromPath(currentCard.topic)}</span>
         <div class="card-question">
           {#if currentCard.front.match(/^[a-eA-E]\) /mi)}

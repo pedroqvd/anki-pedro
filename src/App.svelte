@@ -161,7 +161,6 @@
     const data = await fetchCardsFromSheet();
     if (data && data.length > 0) {
       cards = data;
-      if (currentCardIndex >= filteredCards.length) currentCardIndex = Math.max(0, filteredCards.length - 1);
     }
   }
 

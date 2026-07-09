@@ -153,16 +153,25 @@ export function getWeekDayLabels(): string[] {
   return labels;
 }
 
-export function getAnnualActivity(): { date: string, count: number }[] {
+export function getAnnualActivity(): { date: string, count: number, empty?: boolean }[] {
   try {
     const raw = localStorage.getItem(ACTIVITY_KEY);
     const activity: DailyActivity = raw ? JSON.parse(raw) : {};
     
-    const result: { date: string, count: number }[] = [];
+    const result: { date: string, count: number, empty?: boolean }[] = [];
+    const d = new Date();
+    d.setDate(d.getDate() - 364);
+    
+    // Adicionar padding para que o primeiro dia caia na linha certa (0 = Domingo)
+    const startDay = d.getDay();
+    for (let i = 0; i < startDay; i++) {
+      result.push({ date: '', count: 0, empty: true });
+    }
+    
     for (let i = 364; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const key = d.toISOString().split('T')[0];
+      const cur = new Date();
+      cur.setDate(cur.getDate() - i);
+      const key = cur.toISOString().split('T')[0];
       result.push({ date: key, count: activity[key] || 0 });
     }
     return result;

@@ -22,7 +22,7 @@
     cards: Flashcard[];
     accuracyRate: number;
     weeklyActivity: number[];
-    annualActivity: {date: string, count: number}[];
+    annualActivity: {date: string, count: number, empty?: boolean}[];
     weekDayLabels: string[];
     disciplineCoverage: any[];
     setTheme: (t: string) => void;
@@ -130,6 +130,21 @@
     font-size: 0.85rem;
     border: 1px solid var(--bg-card-border);
   }
+  .heatmap-container {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    height: 105px;
+    gap: 3px;
+    overflow-x: auto;
+    padding-bottom: 5px;
+  }
+  .heatmap-cell {
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
 </style>
 
 <!-- Streak -->
@@ -191,31 +206,17 @@
   <h3 class="section-title">Mapa de Calor (Último Ano)</h3>
   <div class="heatmap-container">
     {#each annualActivity as day}
-      <div class="heatmap-cell" 
-           title="{day.date}: {day.count} revisões" 
-           style="background: {day.count === 0 ? 'var(--bg-input)' : `rgba(139,92,246,${Math.min(0.2 + day.count * 0.1, 1)})`}">
-      </div>
+      {#if day.empty}
+        <div class="heatmap-cell" style="background: transparent;"></div>
+      {:else}
+        <div class="heatmap-cell" 
+             title="{day.date}: {day.count} revisões" 
+             style="background: {day.count === 0 ? 'var(--bg-input)' : `rgba(139,92,246,${Math.min(0.2 + day.count * 0.1, 1)})`}">
+        </div>
+      {/if}
     {/each}
   </div>
 </div>
-
-<style>
-  .heatmap-container {
-    display: flex;
-    flex-direction: column;
-    flex-wrap: wrap;
-    height: 105px;
-    gap: 3px;
-    overflow-x: auto;
-    padding-bottom: 5px;
-  }
-  .heatmap-cell {
-    width: 12px;
-    height: 12px;
-    border-radius: 2px;
-    flex-shrink: 0;
-  }
-</style>
 
 {#if bancas.length > 0}
   <div class="card" style="margin-top: 15px;">

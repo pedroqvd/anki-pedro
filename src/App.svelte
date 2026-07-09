@@ -22,7 +22,7 @@
   let weeklyActivity = $state<number[]>([0,0,0,0,0,0,0]);
   let weekDayLabels = $state<string[]>(['Seg','Ter','Qua','Qui','Sex','Sáb','Dom']);
   let accuracyRate = $state(0);
-  let annualActivity = $state<{date: string, count: number}[]>([]);
+  let annualActivity = $state<{date: string, count: number, empty?: boolean}[]>([]);
   
   let pendingToday = $derived(
     cards.filter(c => new Date(c.nextReview) <= new Date()).length
@@ -194,17 +194,25 @@
     localStorage.setItem('anki_theme', theme);
   }
 
-  // ================= Lógica de Estudo =================
+  // ================= Funções Auxiliares =================
   function readText(text: string) {
-    // Strip markdown before reading
-    const plainText = text.replace(/[#_*~`>\[\]\(\)]/g, '');
-    const u = new SpeechSynthesisUtterance(plainText);
-    u.lang = 'pt-BR';
-    speechSynthesis.speak(u);
+    if (!('speechSynthesis' in window)) {
+      showToast("Seu navegador não suporta leitura em voz alta.");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const msg = new SpeechSynthesisUtterance(text.replace(/<[^>]*>?/gm, ''));
+    msg.lang = 'pt-BR';
+    window.speechSynthesis.speak(msg);
   }
 
   async function handleAnswer(grade: Grade) {
-    if (!currentCard) return;
+    if (!currentCard || isSaving) return;
+    
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel(); // Parar fala ao responder
+    }
+
     lastAnswered = { cardIndex: currentCardIndex, oldState: { ...currentCard } };
 
     const { interval, ease, nextReview } = calculateNextReview({
@@ -652,6 +660,11 @@
           <Sparkles size={40}/>
           <h3>Tudo limpo!</h3>
           <p class="text-muted">Nenhuma revisão pendente para <strong>{selectedTopic}</strong>.</p>
+          {#if cards.some(c => c.interval === -1 && (selectedTopic === 'Todos' || getDisciplineFromPath(c.topic) === selectedTopic))}
+            <p class="text-muted text-sm" style="color: var(--warn); margin-top: 10px;">
+              Aviso: Você possui cartões pausados neste filtro.
+            </p>
+          {/if}
         </div>
       {/if}
 
@@ -695,7 +708,9 @@
         </div>
 
         {#if addMode === 'single'}
-          <label>Pergunta (Frente)</label>
+          <label style="display: flex; align-items: center;">Pergunta (Frente) 
+            <button class="badge" style="margin-left: 10px; border:none; cursor:pointer;" onclick={() => newFront += '{{}}'}>[..] Cloze</button>
+          </label>
           <textarea class="input" placeholder="Digite a pergunta..." bind:value={newFront}></textarea>
 
           <label>Resposta (Verso)</label>

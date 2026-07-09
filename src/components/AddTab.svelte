@@ -86,11 +86,68 @@
   }
 
   function parseOcrText(rawText: string) {
-    // Tenta arrumar quebras de linha indesejadas
-    let text = rawText.replace(/([^\.\?\!:])\n/g, '$1 '); 
-    // Tenta separar as alternativas (a, b, c, d, e)
-    text = text.replace(/([a-eA-E][\.\)])/g, '\n$1');
-    return text.trim() + '\n\n===\n\n[Gabarito/Justificativa]';
+    // 1. Limpeza de "ruído" do Tesseract (ex: barras e underlines)
+    let text = rawText.replace(/[\|\_]/g, '');
+
+    // 2. Reconexão Inteligente de Frases (Remove quebras de linha fantasmas do OCR)
+    let lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    let cleanLines: string[] = [];
+    
+    const isAlt = (l: string) => /^[a-eA-E][\.\)\-]\s/.test(l);
+    const isQStart = (l: string) => /^(QUESTÃO\s*\d+|Q\s*\d+|\d+[\.\-\)]\s)/i.test(l);
+    
+    for (let i = 0; i < lines.length; i++) {
+      let current = lines[i];
+      if (i > 0 && !isAlt(current) && !isQStart(current)) {
+        let prev = cleanLines[cleanLines.length - 1];
+        // Une se a linha anterior não for terminada por pontuação final ou não for alternativa
+        if (!isAlt(prev) && !isQStart(prev) && !/[.:!?]$/.test(prev)) {
+          cleanLines[cleanLines.length - 1] = prev + ' ' + current;
+          continue;
+        }
+      }
+      cleanLines.push(current);
+    }
+    
+    text = cleanLines.join('\n');
+
+    // 3. Fatiamento Automático de Múltiplas Questões na mesma Imagem
+    const qSplitter = /(QUESTÃO\s*\d+|Q\s*\d+|\d+[\.\-\)]\s)/i;
+    let parts = text.split(qSplitter).filter(p => p.trim().length > 0);
+    
+    let bulkOutput: string[] = [];
+    
+    if (parts.length === 1) {
+      bulkOutput.push(formatCard(parts[0]));
+    } else {
+      let currentCard = '';
+      for (let i = 0; i < parts.length; i++) {
+        let p = parts[i];
+        if (qSplitter.test(p)) {
+          if (currentCard) bulkOutput.push(formatCard(currentCard));
+          currentCard = `**${p.trim()}**\n`;
+        } else {
+          currentCard += p.trim();
+        }
+      }
+      if (currentCard) bulkOutput.push(formatCard(currentCard));
+    }
+
+    return bulkOutput.join('\n\n\n');
+  }
+
+  function formatCard(content: string) {
+    // Assegura que cada alternativa (a,b,c...) caia em uma nova linha
+    content = content.replace(/\s+([a-eA-E][\.\)]\s)/g, '\n$1');
+    
+    // Ajusta espaços e padroniza
+    content = content.split('\n').map(l => l.trim()).filter(l => l.length > 0).join('\n');
+
+    // Mini-IA: Detecta se é prova estilo Múltipla Escolha ou CESPE (Certo/Errado)
+    let hasAlternatives = /^[a-eA-E][\.\)]\s/m.test(content);
+    let back = hasAlternatives ? '**Gabarito:** [Letra]' : '**Gabarito:** [ CERTO / ERRADO ]\n\n**Justificativa:**';
+    
+    return `${content}\n===\n${back}`;
   }
 
   function submit() {

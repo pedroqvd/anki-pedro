@@ -25,9 +25,8 @@
   );
 
   // Cobertura do edital por disciplina
-  let disciplineCoverage = $derived(() => {
-    const allDiscs = getAllDisciplines();
-    return allDiscs.map(disc => {
+  let disciplineCoverage = $derived(
+    getAllDisciplines().map(disc => {
       const cardsInDisc = cards.filter(c => getDisciplineFromPath(c.topic) === disc.name);
       const coveredTopics = new Set(cardsInDisc.map(c => parseTopic(c.topic).topic));
       return {
@@ -37,8 +36,8 @@
         coveredTopics: coveredTopics.size,
         totalCards: cardsInDisc.length
       };
-    });
-  });
+    })
+  );
 
   // ================= Aba Estudar =================
   let selectedTopic = $state<string>('Todos');
@@ -340,7 +339,7 @@
       <!-- Edital Coverage -->
       <div class="card">
         <h3 class="section-title">Cobertura do Edital</h3>
-        {#each disciplineCoverage() as disc}
+        {#each disciplineCoverage as disc}
           <div class="coverage-row">
             <div class="coverage-header">
               <span class="coverage-name">{disc.name}</span>

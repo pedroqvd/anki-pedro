@@ -10,6 +10,7 @@
   import Dashboard from './components/Dashboard.svelte';
   import BottomNav from './components/BottomNav.svelte';
   import ManageTab from './components/ManageTab.svelte';
+  import AddTab from './components/AddTab.svelte';
 
   // ================= Estado Global =================
   let cards = $state<Flashcard[]>([]);
@@ -72,24 +73,19 @@
   let currentCard = $derived(filteredCards[currentCardIndex]);
 
   // ================= Aba Adicionar =================
-  let addMode = $state<'single'|'bulk'|'errorBook'>('single');
-  let newFront = $state('');
-  let newBack = $state('');
-  let errorQuestion = $state('');
-  let errorMistake = $state('');
-  let errorTheory = $state('');
-  let createReversed = $state(false);
-  let bulkText = $state('');
-  let selectedArea = $state('');
-  let selectedDiscipline = $state('');
-  let selectedTopicName = $state('');
+  async function handleSaveCards(cardsToAdd: Flashcard[]) {
+    isSaving = true;
+    cards = [...cards, ...cardsToAdd];
+    saveLocal();
+    showToast(`${cardsToAdd.length} cartões salvos!`);
 
-  let availableDisciplines = $derived(
-    EDITAL.find(a => a.name === selectedArea)?.disciplines || []
-  );
-  let availableTopics = $derived(
-    availableDisciplines.find(d => d.name === selectedDiscipline)?.topics || []
-  );
+    for (const c of cardsToAdd) {
+      await addCardToSheet(c.front, c.back, c.topic);
+    }
+    
+    await silentSync();
+    isSaving = false;
+  }
 
   // ================= Aba Gerenciar =================
   let searchQuery = $state('');
@@ -317,95 +313,7 @@
   }
 
   // ================= Lógica de Adição =================
-  async function handleAdd() {
-    if (isSaving) return;
-    if (!selectedArea || !selectedDiscipline || !selectedTopicName) {
-      showToast("Selecione o tópico do edital!");
-      return;
-    }
-    isSaving = true;
-    const topicPath = `${selectedArea} > ${selectedDiscipline} > ${selectedTopicName}`;
-    
-    let addedCount = 0;
-    const cardsToAdd: Flashcard[] = [];
-
-    if (addMode === 'single') {
-      if (!newFront || !newBack) {
-        showToast("Preencha Frente e Verso!");
-        isSaving = false;
-        return;
-      }
-      cardsToAdd.push({
-        id: "temp-" + Date.now() + Math.random(),
-        front: newFront, back: newBack, topic: topicPath,
-        interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
-      });
-      if (createReversed) {
-        cardsToAdd.push({
-          id: "temp-" + Date.now() + Math.random(),
-          front: newBack, back: newFront, topic: topicPath,
-          interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
-        });
-      }
-    } else if (addMode === 'errorBook') {
-      if (!errorQuestion || !errorMistake || !errorTheory) {
-        showToast("Preencha todos os campos do Caderno de Erros!");
-        isSaving = false;
-        return;
-      }
-      const backContent = `**Onde eu errei:**\n${errorMistake}\n\n**Teoria / Justificativa:**\n${errorTheory}`;
-      cardsToAdd.push({
-        id: "temp-" + Date.now() + Math.random(),
-        front: errorQuestion, back: backContent, topic: topicPath,
-        interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
-      });
-    } else {
-      // Bulk Mode
-      if (!bulkText) {
-        showToast("Cole o texto para adição em lote!");
-        isSaving = false;
-        return;
-      }
-      const lines = bulkText.split('\n');
-      for (const line of lines) {
-        if (line.includes('===')) {
-          const [f, b] = line.split('===');
-          if (f.trim() && b.trim()) {
-            cardsToAdd.push({
-              id: "temp-" + Date.now() + Math.random(),
-              front: f.trim(), back: b.trim(), topic: topicPath,
-              interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
-            });
-            if (createReversed) {
-              cardsToAdd.push({
-                id: "temp-" + Date.now() + Math.random(),
-                front: b.trim(), back: f.trim(), topic: topicPath,
-                interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
-              });
-            }
-          }
-        }
-      }
-      if (cardsToAdd.length === 0) {
-        showToast("Nenhum cartão válido encontrado (use ===)");
-        isSaving = false;
-        return;
-      }
-    }
-
-    cards = [...cards, ...cardsToAdd];
-    saveLocal();
-    newFront = ''; newBack = ''; bulkText = '';
-    errorQuestion = ''; errorMistake = ''; errorTheory = '';
-    showToast(`${cardsToAdd.length} cartões salvos!`);
-
-    for (const c of cardsToAdd) {
-      await addCardToSheet(c.front, c.back, c.topic);
-    }
-    
-    await silentSync();
-    isSaving = false;
-  }
+  // handleAdd moved to AddTab.svelte
 
   // ================= Lógica de Gerenciamento =================
   async function toggleSuspend(c: Flashcard) {
@@ -672,76 +580,11 @@
 
     <!-- ==================== ADICIONAR ==================== -->
     {:else if activeTab === 'add'}
-      <div class="card form-container">
-        <h3 class="section-title">Novo Cartão</h3>
-
-        <label>Área</label>
-        <select class="input" bind:value={selectedArea} onchange={() => { selectedDiscipline = ''; selectedTopicName = ''; }}>
-          <option value="">Selecione a área...</option>
-          {#each EDITAL as area}
-            <option value={area.name}>{area.name}</option>
-          {/each}
-        </select>
-
-        {#if selectedArea}
-          <label>Disciplina</label>
-          <select class="input" bind:value={selectedDiscipline} onchange={() => { selectedTopicName = ''; }}>
-            <option value="">Selecione a disciplina...</option>
-            {#each availableDisciplines as disc}
-              <option value={disc.name}>{disc.name} ({disc.questions}q)</option>
-            {/each}
-          </select>
-        {/if}
-
-        {#if selectedDiscipline}
-          <label>Tópico do Edital</label>
-          <select class="input" bind:value={selectedTopicName}>
-            <option value="">Selecione o tópico...</option>
-            {#each availableTopics as topic}
-              <option value={topic.name}>{topic.name}</option>
-            {/each}
-          </select>
-        {/if}
-
-        <div style="display:flex; gap:10px; margin-top:10px;">
-          <button class="btn-primary" style="flex:1; background: {addMode === 'single' ? 'var(--accent)' : 'var(--bg-card)'}; color: {addMode === 'single' ? '#fff' : 'var(--text-primary)'}" onclick={() => addMode = 'single'}>Básico</button>
-          <button class="btn-primary" style="flex:1; background: {addMode === 'errorBook' ? 'var(--accent)' : 'var(--bg-card)'}; color: {addMode === 'errorBook' ? '#fff' : 'var(--text-primary)'}" onclick={() => addMode = 'errorBook'}>Caderno Erros</button>
-          <button class="btn-primary" style="flex:1; background: {addMode === 'bulk' ? 'var(--accent)' : 'var(--bg-card)'}; color: {addMode === 'bulk' ? '#fff' : 'var(--text-primary)'}" onclick={() => addMode = 'bulk'}>Em Lote</button>
-        </div>
-
-        {#if addMode === 'single'}
-          <label style="display: flex; align-items: center;">Pergunta (Frente) 
-            <button class="badge" style="margin-left: 10px; border:none; cursor:pointer;" onclick={() => newFront += '{{}}'}>[..] Cloze</button>
-          </label>
-          <textarea class="input" placeholder="Digite a pergunta..." bind:value={newFront}></textarea>
-
-          <label>Resposta (Verso)</label>
-          <textarea class="input" placeholder="Digite a resposta..." bind:value={newBack}></textarea>
-        {:else if addMode === 'errorBook'}
-          <label>Enunciado da Questão</label>
-          <textarea class="input" style="height: 100px" placeholder="Qual a taxa básica de juros?" bind:value={errorQuestion}></textarea>
-
-          <label style="color: var(--err-text)">Onde escorreguei (A Pegadinha)</label>
-          <textarea class="input" style="height: 80px; border-color: var(--err-text)" placeholder="Achei que era a TJLP..." bind:value={errorMistake}></textarea>
-
-          <label style="color: var(--success)">Teoria / Justificativa</label>
-          <textarea class="input" style="height: 100px; border-color: var(--success)" placeholder="A taxa básica de juros é a Selic. A TJLP é de longo prazo." bind:value={errorTheory}></textarea>
-        {:else}
-          <label>Cartões (Formato: Pergunta === Resposta)</label>
-          <textarea class="input" style="height: 150px" placeholder="Ex:\nO que é a Selic? === Taxa básica de juros\nCapital da França === Paris" bind:value={bulkText}></textarea>
-        {/if}
-
-        {#if addMode === 'single' || addMode === 'bulk'}
-          <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size: 0.9rem; margin-top:10px;">
-            <input type="checkbox" bind:checked={createReversed} style="width:16px;height:16px;">
-            Criar versão reversa (Verso === Frente) também
-          </label>
-        {/if}
-
-        <button class="btn-primary" onclick={handleAdd} disabled={isSaving} style="margin-top:15px;">
-          {isSaving ? 'Salvando...' : 'Salvar na Nuvem'}
-        </button>
-      </div>
+      <AddTab 
+        {isSaving} 
+        onSave={handleSaveCards} 
+        {showToast} 
+      />
 
     <!-- ==================== GERENCIAR ==================== -->
     {:else if activeTab === 'manage'}

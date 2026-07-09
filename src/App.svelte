@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fetchCardsFromSheet, updateCardInSheet, addCardToSheet, deleteCardFromSheet, type Flashcard } from "./lib/googleSheets";
+  import { fetchCardsFromSheet, updateCardInSheet, addCardToSheet, deleteCardFromSheet, loadCachedCards, type Flashcard } from "./lib/googleSheets";
   import { calculateNextReview, type Grade } from "./lib/scheduler";
   import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic, type Area } from "./lib/edital";
   import { getStreak, recordStudyToday, getWeeklyActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
@@ -103,8 +103,17 @@
     weekDayLabels = getWeekDayLabels();
     accuracyRate = getAccuracyRate();
 
-    // Carregar cartas
-    loadCards();
+    // CACHE INSTANTÂNEO: Carregar cartas do localStorage (0ms)
+    const cached = loadCachedCards();
+    if (cached.length > 0) {
+      cards = cached;
+      loading = false;
+      // Sincronizar com a nuvem em segundo plano (invisível)
+      silentSync();
+    } else {
+      // Primeira vez: precisa esperar a nuvem
+      loadCards();
+    }
   });
 
   async function loadCards() {

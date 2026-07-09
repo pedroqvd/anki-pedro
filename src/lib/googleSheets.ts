@@ -10,17 +10,45 @@ export interface Flashcard {
 }
 
 const API_URL = import.meta.env.VITE_APPS_SCRIPT_URL || "";
+const CACHE_KEY = "anki_cards_cache";
+const CACHE_TIME_KEY = "anki_cache_time";
+
+// ==================== CACHE LOCAL ====================
+// Carrega instantaneamente do localStorage (0ms) e sincroniza com a nuvem em segundo plano
+
+function getCachedCards(): Flashcard[] {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function setCachedCards(cards: Flashcard[]): void {
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(cards));
+    localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+  } catch { /* localStorage cheio, ignora */ }
+}
+
+// ==================== API ====================
 
 export async function fetchCardsFromSheet(): Promise<Flashcard[]> {
-  if (!API_URL) return [];
+  if (!API_URL) return getCachedCards();
   try {
     const response = await fetch(API_URL);
-    if (!response.ok) throw new Error("Falha ao buscar as cartas");
-    return await response.json() as Flashcard[];
+    if (!response.ok) throw new Error("Falha ao buscar");
+    const data = await response.json() as Flashcard[];
+    setCachedCards(data); // Atualiza cache local
+    return data;
   } catch (error) {
-    console.error("[Google Sheets API Error]", error);
-    return [];
+    console.error("[Sync Error]", error);
+    return getCachedCards(); // Fallback para cache offline
   }
+}
+
+// Carrega cache instantaneamente, depois sincroniza no fundo
+export function loadCachedCards(): Flashcard[] {
+  return getCachedCards();
 }
 
 async function sendAction(payload: any): Promise<void> {
@@ -32,7 +60,7 @@ async function sendAction(payload: any): Promise<void> {
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }
     });
   } catch (error) {
-    console.error("[Google Sheets API Error]", error);
+    console.error("[Sync Error]", error);
   }
 }
 

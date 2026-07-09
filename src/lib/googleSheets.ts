@@ -1,3 +1,5 @@
+import { enqueue } from "./offlineQueue";
+
 export interface Flashcard {
   id: string;
   front: string;
@@ -14,7 +16,6 @@ const CACHE_KEY = "anki_cards_cache";
 const CACHE_TIME_KEY = "anki_cache_time";
 
 // ==================== CACHE LOCAL ====================
-// Carrega instantaneamente do localStorage (0ms) e sincroniza com a nuvem em segundo plano
 
 function getCachedCards(): Flashcard[] {
   try {
@@ -23,11 +24,19 @@ function getCachedCards(): Flashcard[] {
   } catch { return []; }
 }
 
-function setCachedCards(cards: Flashcard[]): void {
+export function setCachedCards(cards: Flashcard[]): void {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(cards));
     localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
   } catch { /* localStorage cheio, ignora */ }
+}
+
+export function loadCachedCards(): Flashcard[] {
+  return getCachedCards();
+}
+
+export function getApiUrl(): string {
+  return API_URL;
 }
 
 // ==================== API ====================
@@ -38,29 +47,27 @@ export async function fetchCardsFromSheet(): Promise<Flashcard[]> {
     const response = await fetch(API_URL);
     if (!response.ok) throw new Error("Falha ao buscar");
     const data = await response.json() as Flashcard[];
-    setCachedCards(data); // Atualiza cache local
+    setCachedCards(data);
     return data;
   } catch (error) {
     console.error("[Sync Error]", error);
-    return getCachedCards(); // Fallback para cache offline
+    return getCachedCards();
   }
 }
 
-// Carrega cache instantaneamente, depois sincroniza no fundo
-export function loadCachedCards(): Flashcard[] {
-  return getCachedCards();
-}
-
+// sendAction com fallback para fila offline
 async function sendAction(payload: any): Promise<void> {
   if (!API_URL) return;
   try {
-    await fetch(API_URL, {
+    const response = await fetch(API_URL, {
       method: 'POST',
       body: JSON.stringify(payload),
       headers: { 'Content-Type': 'text/plain;charset=utf-8' }
     });
+    if (!response.ok) throw new Error("Server error");
   } catch (error) {
-    console.error("[Sync Error]", error);
+    console.warn("[Offline] Ação enfileirada para sincronização posterior:", payload.action);
+    enqueue(payload); // Salva na fila offline
   }
 }
 

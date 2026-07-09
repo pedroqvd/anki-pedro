@@ -1,9 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fetchCardsFromSheet, updateCardInSheet, addCardToSheet, deleteCardFromSheet, loadCachedCards, type Flashcard } from "./lib/googleSheets";
+  import { fetchCardsFromSheet, updateCardInSheet, addCardToSheet, deleteCardFromSheet, loadCachedCards, setCachedCards, getApiUrl, type Flashcard } from "./lib/googleSheets";
   import { calculateNextReview, type Grade } from "./lib/scheduler";
   import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic, type Area } from "./lib/edital";
   import { getStreak, recordStudyToday, getWeeklyActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
+  import { processQueue, getPendingCount } from "./lib/offlineQueue";
   import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target } from "lucide-svelte";
 
   // ================= Estado Global =================
@@ -11,6 +12,7 @@
   let loading = $state(true);
   let activeTab = $state<'dashboard' | 'study' | 'add' | 'manage'>('dashboard');
   let darkMode = $state(true);
+  let isOnline = $state(true);
 
   // ================= Dashboard =================
   let streak = $state(0);
@@ -108,11 +110,37 @@
     if (cached.length > 0) {
       cards = cached;
       loading = false;
-      // Sincronizar com a nuvem em segundo plano (invisível)
       silentSync();
     } else {
-      // Primeira vez: precisa esperar a nuvem
       loadCards();
+    }
+
+    // FILA OFFLINE: Detecta quando a internet volta e sincroniza
+    isOnline = navigator.onLine;
+    window.addEventListener('online', async () => {
+      isOnline = true;
+      const pending = getPendingCount();
+      if (pending > 0) {
+        const synced = await processQueue(getApiUrl());
+        if (synced > 0) {
+          showToast(`${synced} ${synced === 1 ? 'ação sincronizada' : 'ações sincronizadas'} com a nuvem!`);
+          silentSync();
+        }
+      }
+    });
+    window.addEventListener('offline', () => {
+      isOnline = false;
+      showToast('Sem internet — modo offline ativado');
+    });
+
+    // Tenta processar fila pendente ao abrir (caso tenha ficado pendente da última sessão)
+    if (navigator.onLine && getPendingCount() > 0) {
+      processQueue(getApiUrl()).then(synced => {
+        if (synced > 0) {
+          showToast(`${synced} ${synced === 1 ? 'ação pendente sincronizada' : 'ações pendentes sincronizadas'}!`);
+          silentSync();
+        }
+      });
     }
   });
 
@@ -121,6 +149,11 @@
     const data = await fetchCardsFromSheet();
     cards = data || [];
     loading = false;
+  }
+
+  // Salva estado local no cache a cada mutação
+  function saveLocal() {
+    setCachedCards(cards);
   }
 
   async function silentSync() {
@@ -159,6 +192,7 @@
     accuracyRate = getAccuracyRate();
 
     if (currentCardIndex >= filteredCards.length) showToast("Revisões concluídas! 🎉");
+    saveLocal();
     updateCardInSheet(cardToUpdate);
   }
 
@@ -175,6 +209,7 @@
       interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
     };
     cards = [...cards, tempCard];
+    saveLocal();
     const f = newFront, b = newBack, t = topicPath;
     newFront = ''; newBack = '';
     showToast('Cartão salvo na nuvem!');
@@ -185,6 +220,7 @@
   // ================= Lógica de Gerenciamento =================
   async function handleDelete(rowNumber: number, id: string) {
     cards = cards.filter(c => c.id !== id);
+    saveLocal();
     showToast('Cartão deletado!');
     if (rowNumber !== -1) {
       await deleteCardFromSheet(rowNumber);
@@ -198,6 +234,7 @@
     if(idx !== -1) cards[idx] = { ...editingCard };
     const cardToUpdate = { ...editingCard };
     editingCard = null;
+    saveLocal();
     showToast('Cartão atualizado!');
     if (cardToUpdate.rowNumber !== -1) {
       await updateCardInSheet(cardToUpdate);

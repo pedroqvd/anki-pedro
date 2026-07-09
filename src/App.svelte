@@ -5,7 +5,7 @@
   import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic, type Area } from "./lib/edital";
   import { getStreak, recordStudyToday, getWeeklyActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
   import { processQueue, getPendingCount } from "./lib/offlineQueue";
-  import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target, WifiOff, Download } from "lucide-svelte";
+  import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target, WifiOff, Download, Upload } from "lucide-svelte";
 
   // ================= Estado Global =================
   let cards = $state<Flashcard[]>([]);
@@ -13,6 +13,7 @@
   let activeTab = $state<'dashboard' | 'study' | 'add' | 'manage'>('dashboard');
   let darkMode = $state(true);
   let isOnline = $state(true);
+  let isSaving = $state(false);
 
   // ================= Dashboard =================
   let streak = $state(0);
@@ -93,9 +94,15 @@
 
   // ================= Ciclo de Vida =================
   onMount(() => {
-    // Carregar preferência de tema
+    // Carregar preferência de tema ou tema do sistema
     const savedTheme = localStorage.getItem('anki_theme');
-    if (savedTheme === 'light') darkMode = false;
+    if (savedTheme === 'light') {
+      darkMode = false;
+    } else if (savedTheme === 'dark') {
+      darkMode = true;
+    } else {
+      darkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
 
     // Carregar gamificação
     const s = getStreak();
@@ -200,10 +207,12 @@
 
   // ================= Lógica de Adição =================
   async function handleAdd() {
+    if (isSaving) return;
     if (!newFront || !newBack || !selectedArea || !selectedDiscipline || !selectedTopicName) {
       showToast("Preencha todos os campos!");
       return;
     }
+    isSaving = true;
     const topicPath = `${selectedArea} > ${selectedDiscipline} > ${selectedTopicName}`;
     const tempCard: Flashcard = {
       id: "temp-" + Date.now(),
@@ -216,7 +225,8 @@
     newFront = ''; newBack = '';
     showToast('Cartão salvo localmente!');
     await addCardToSheet(f, b, t);
-    silentSync();
+    await silentSync();
+    isSaving = false;
   }
 
   // ================= Lógica de Gerenciamento =================
@@ -241,8 +251,44 @@
     downloadAnchorNode.remove();
   }
 
+  function handleImport(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const importedCards = JSON.parse(e.target?.result as string);
+        if (Array.isArray(importedCards)) {
+          // Merge imported cards by ID
+          const newCards = [...cards];
+          let added = 0;
+          for (const ic of importedCards) {
+            if (!newCards.find(c => c.id === ic.id)) {
+              newCards.push(ic);
+              added++;
+              // Send to cloud if needed
+              if (ic.rowNumber === -1 || ic.rowNumber === undefined) {
+                 await addCardToSheet(ic.front, ic.back, ic.topic);
+              }
+            }
+          }
+          cards = newCards;
+          saveLocal();
+          showToast(`${added} cartões importados com sucesso!`);
+          silentSync();
+        }
+      } catch (err) {
+        showToast("Erro ao ler arquivo JSON");
+      }
+    };
+    reader.readAsText(file);
+    input.value = '';
+  }
+
   async function saveEdit() {
-    if(!editingCard) return;
+    if(!editingCard || isSaving) return;
+    isSaving = true;
     const idx = cards.findIndex(c => c.id === editingCard!.id);
     if(idx !== -1) cards[idx] = { ...editingCard };
     const cardToUpdate = { ...editingCard };
@@ -251,8 +297,9 @@
     showToast('Cartão atualizado!');
     if (cardToUpdate.rowNumber !== -1) {
       await updateCardInSheet(cardToUpdate);
-      silentSync();
+      await silentSync();
     }
+    isSaving = false;
   }
 
   function formatDate(iso: string) {
@@ -286,7 +333,9 @@
           <span class="stat-badge"><Clock size={14}/> {editingCard.interval}d</span>
           <span class="stat-badge"><Calendar size={14}/> {formatDate(editingCard.nextReview)}</span>
         </div>
-        <button class="btn-primary" onclick={saveEdit}>Salvar Alterações</button>
+        <button class="btn-primary" onclick={saveEdit} disabled={isSaving}>
+          {isSaving ? 'Salvando...' : 'Salvar Alterações'}
+        </button>
       </div>
     </div>
   {/if}
@@ -449,7 +498,9 @@
         <label>Resposta (Verso)</label>
         <textarea class="input" placeholder="Digite a resposta..." bind:value={newBack}></textarea>
 
-        <button class="btn-primary" onclick={handleAdd}>Salvar na Nuvem</button>
+        <button class="btn-primary" onclick={handleAdd} disabled={isSaving}>
+          {isSaving ? 'Salvando...' : 'Salvar na Nuvem'}
+        </button>
       </div>
 
     <!-- ==================== GERENCIAR ==================== -->
@@ -460,6 +511,10 @@
             <Search size={18}/>
             <input class="input search-input" placeholder="Buscar..." bind:value={searchQuery} />
           </div>
+          <label class="btn-icon" title="Importar Backup JSON" style="background: var(--bg-card); border: 1px solid var(--bg-card-border); cursor: pointer; display: flex; align-items: center; justify-content: center;">
+            <input type="file" accept=".json" style="display: none;" onchange={handleImport} />
+            <Upload size={18} color="var(--info)" />
+          </label>
           <button class="btn-icon" onclick={exportData} title="Exportar Backup JSON" style="background: var(--bg-card); border: 1px solid var(--bg-card-border);">
             <Download size={18} color="var(--info)" />
           </button>
@@ -686,8 +741,8 @@
   .is-flipped { transform: rotateY(180deg); }
   .card-face { position: absolute; width: 100%; height: 100%; backface-visibility: hidden; -webkit-backface-visibility: hidden; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
   .card-back { transform: rotateY(180deg); }
-  .card-question { font-size: 1.4rem; font-weight: 700; line-height: 1.4; margin: 1.5rem 0 1rem; }
-  .card-answer { font-size: 1.1rem; line-height: 1.6; margin-bottom: 1.5rem; color: var(--text-secondary); }
+  .card-question { font-size: 1.4rem; font-weight: 700; color: var(--text-primary); margin-bottom: 1.5rem; white-space: pre-wrap; }
+  .card-answer { font-size: 1.1rem; line-height: 1.6; margin-bottom: 1.5rem; color: var(--text-secondary); white-space: pre-wrap; }
 
   .btn-primary {
     background: linear-gradient(135deg, var(--accent), #6d28d9);
@@ -721,7 +776,7 @@
   .list-item { display: flex; justify-content: space-between; align-items: center; padding: 1rem; margin-bottom: 0; }
   .item-info { display: flex; flex-direction: column; gap: 3px; overflow: hidden; flex: 1; margin-right: 10px; }
   .topic-tag { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--accent); font-weight: 800; }
-  .item-front { font-size: 0.9rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .item-front { flex: 1; font-weight: 500; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .item-stats { display: flex; gap: 10px; font-size: 0.7rem; color: var(--text-muted); margin-top: 2px; }
   .item-stats span { display: flex; align-items: center; gap: 3px; }
   .item-actions { display: flex; gap: 6px; }

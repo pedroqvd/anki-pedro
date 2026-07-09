@@ -5,7 +5,7 @@
   import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic, type Area } from "./lib/edital";
   import { getStreak, recordStudyToday, getWeeklyActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
   import { processQueue, getPendingCount } from "./lib/offlineQueue";
-  import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target, WifiOff, Download, Upload, Volume2, RotateCcw, Zap } from "lucide-svelte";
+  import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target, WifiOff, Download, Upload, Volume2, RotateCcw, Zap, PauseCircle, PlayCircle } from "lucide-svelte";
   import { marked } from 'marked';
 
   // ================= Estado Global =================
@@ -52,15 +52,19 @@
   let filteredCards = $derived(
     cards.filter(c => {
       const isDue = new Date(c.nextReview) <= new Date();
+      const isSuspended = c.interval === -1;
       const matchesTopic = selectedTopic === 'Todos' || getDisciplineFromPath(c.topic) === selectedTopic;
-      return (isDue || isCramming) && matchesTopic;
+      return (isDue || isCramming) && matchesTopic && !isSuspended;
     })
   );
   let currentCard = $derived(filteredCards[currentCardIndex]);
 
   // ================= Aba Adicionar =================
+  let addMode = $state<'single'|'bulk'>('single');
   let newFront = $state('');
   let newBack = $state('');
+  let createReversed = $state(false);
+  let bulkText = $state('');
   let selectedArea = $state('');
   let selectedDiscipline = $state('');
   let selectedTopicName = $state('');
@@ -233,31 +237,126 @@
     lastAnswered = null;
   }
 
+  // ================= Gestos Mobile (Swipe) =================
+  let touchStartX = $state(0);
+  let touchMoveX = $state(0);
+  let swipeOffset = $state(0);
+
+  function handleTouchStart(e: TouchEvent) {
+    if (!showBack) return;
+    touchStartX = e.touches[0].clientX;
+  }
+  function handleTouchMove(e: TouchEvent) {
+    if (!showBack || touchStartX === 0) return;
+    touchMoveX = e.touches[0].clientX;
+    swipeOffset = touchMoveX - touchStartX;
+  }
+  function handleTouchEnd() {
+    if (!showBack || touchStartX === 0) return;
+    if (swipeOffset > 100) {
+      handleAnswer(3); // Fácil
+    } else if (swipeOffset < -100) {
+      handleAnswer(0); // Errei
+    }
+    touchStartX = 0;
+    touchMoveX = 0;
+    swipeOffset = 0;
+  }
+
   // ================= Lógica de Adição =================
   async function handleAdd() {
     if (isSaving) return;
-    if (!newFront || !newBack || !selectedArea || !selectedDiscipline || !selectedTopicName) {
-      showToast("Preencha todos os campos!");
+    if (!selectedArea || !selectedDiscipline || !selectedTopicName) {
+      showToast("Selecione o tópico do edital!");
       return;
     }
     isSaving = true;
     const topicPath = `${selectedArea} > ${selectedDiscipline} > ${selectedTopicName}`;
-    const tempCard: Flashcard = {
-      id: "temp-" + Date.now(),
-      front: newFront, back: newBack, topic: topicPath,
-      interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
-    };
-    cards = [...cards, tempCard];
+    
+    let addedCount = 0;
+    const cardsToAdd: Flashcard[] = [];
+
+    if (addMode === 'single') {
+      if (!newFront || !newBack) {
+        showToast("Preencha Frente e Verso!");
+        isSaving = false;
+        return;
+      }
+      cardsToAdd.push({
+        id: "temp-" + Date.now() + Math.random(),
+        front: newFront, back: newBack, topic: topicPath,
+        interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
+      });
+      if (createReversed) {
+        cardsToAdd.push({
+          id: "temp-" + Date.now() + Math.random(),
+          front: newBack, back: newFront, topic: topicPath,
+          interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
+        });
+      }
+    } else {
+      // Bulk Mode
+      if (!bulkText) {
+        showToast("Cole o texto para adição em lote!");
+        isSaving = false;
+        return;
+      }
+      const lines = bulkText.split('\n');
+      for (const line of lines) {
+        if (line.includes('===')) {
+          const [f, b] = line.split('===');
+          if (f.trim() && b.trim()) {
+            cardsToAdd.push({
+              id: "temp-" + Date.now() + Math.random(),
+              front: f.trim(), back: b.trim(), topic: topicPath,
+              interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
+            });
+            if (createReversed) {
+              cardsToAdd.push({
+                id: "temp-" + Date.now() + Math.random(),
+                front: b.trim(), back: f.trim(), topic: topicPath,
+                interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
+              });
+            }
+          }
+        }
+      }
+      if (cardsToAdd.length === 0) {
+        showToast("Nenhum cartão válido encontrado (use ===)");
+        isSaving = false;
+        return;
+      }
+    }
+
+    cards = [...cards, ...cardsToAdd];
     saveLocal();
-    const f = newFront, b = newBack, t = topicPath;
-    newFront = ''; newBack = '';
-    showToast('Cartão salvo localmente!');
-    await addCardToSheet(f, b, t);
+    newFront = ''; newBack = ''; bulkText = '';
+    showToast(`${cardsToAdd.length} cartões salvos!`);
+
+    for (const c of cardsToAdd) {
+      await addCardToSheet(c.front, c.back, c.topic);
+    }
+    
     await silentSync();
     isSaving = false;
   }
 
   // ================= Lógica de Gerenciamento =================
+  async function toggleSuspend(c: Flashcard) {
+    const isSuspended = c.interval === -1;
+    const idx = cards.findIndex(card => card.id === c.id);
+    if (idx !== -1) {
+      cards[idx].interval = isSuspended ? 0 : -1;
+      cards[idx].nextReview = new Date().toISOString(); // Resetar revisão ao retomar
+      saveLocal();
+      showToast(isSuspended ? 'Cartão retomado!' : 'Cartão pausado!');
+      if (cards[idx].rowNumber !== -1) {
+        await updateCardInSheet(cards[idx]);
+        await silentSync();
+      }
+    }
+  }
+
   async function handleDelete(rowNumber: number, id: string) {
     if (!confirm('Tem certeza que deseja apagar este cartão permanentemente?')) return;
     cards = cards.filter(c => c.id !== id);
@@ -464,7 +563,7 @@
 
       {#if currentCard}
         <div class="scene">
-          <div class="flashcard" class:is-flipped={showBack}>
+          <div class="flashcard" class:is-flipped={showBack} ontouchstart={handleTouchStart} ontouchmove={handleTouchMove} ontouchend={handleTouchEnd} style={showBack && swipeOffset !== 0 ? `transform: rotateY(180deg) translateX(${swipeOffset}px) rotate(${swipeOffset/15}deg); transition: none;` : ''}>
             <div class="card-face card-front card">
               <span class="topic-tag">{getDisciplineFromPath(currentCard.topic)}</span>
               <div class="card-question">{@html marked.parse(currentCard.front)}</div>
@@ -534,13 +633,28 @@
           </select>
         {/if}
 
-        <label>Pergunta (Frente)</label>
-        <textarea class="input" placeholder="Digite a pergunta..." bind:value={newFront}></textarea>
+        <div style="display:flex; gap:10px; margin-top:10px;">
+          <button class="btn-primary" style="flex:1; background: {addMode === 'single' ? 'var(--accent)' : 'var(--bg-card)'}; color: {addMode === 'single' ? '#fff' : 'var(--text-primary)'}" onclick={() => addMode = 'single'}>Um por vez</button>
+          <button class="btn-primary" style="flex:1; background: {addMode === 'bulk' ? 'var(--accent)' : 'var(--bg-card)'}; color: {addMode === 'bulk' ? '#fff' : 'var(--text-primary)'}" onclick={() => addMode = 'bulk'}>Em Lote</button>
+        </div>
 
-        <label>Resposta (Verso)</label>
-        <textarea class="input" placeholder="Digite a resposta..." bind:value={newBack}></textarea>
+        {#if addMode === 'single'}
+          <label>Pergunta (Frente)</label>
+          <textarea class="input" placeholder="Digite a pergunta..." bind:value={newFront}></textarea>
 
-        <button class="btn-primary" onclick={handleAdd} disabled={isSaving}>
+          <label>Resposta (Verso)</label>
+          <textarea class="input" placeholder="Digite a resposta..." bind:value={newBack}></textarea>
+        {:else}
+          <label>Cartões (Formato: Pergunta === Resposta)</label>
+          <textarea class="input" style="height: 150px" placeholder="Ex:\nO que é a Selic? === Taxa básica de juros\nCapital da França === Paris" bind:value={bulkText}></textarea>
+        {/if}
+
+        <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size: 0.9rem; margin-top:10px;">
+          <input type="checkbox" bind:checked={createReversed} style="width:16px;height:16px;">
+          Criar versão reversa (Verso === Frente) também
+        </label>
+
+        <button class="btn-primary" onclick={handleAdd} disabled={isSaving} style="margin-top:15px;">
           {isSaving ? 'Salvando...' : 'Salvar na Nuvem'}
         </button>
       </div>
@@ -569,16 +683,19 @@
         {/if}
 
         {#each filteredManageCards as c (c.id)}
-          <div class="card list-item">
+          <div class="card list-item" style={c.interval === -1 ? 'opacity: 0.6; background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(0,0,0,0.03) 10px, rgba(0,0,0,0.03) 20px);' : ''}>
             <div class="item-info">
-              <span class="topic-tag">{getDisciplineFromPath(c.topic)}</span>
+              <span class="topic-tag">{getDisciplineFromPath(c.topic)} {c.interval === -1 ? '(Pausado)' : ''}</span>
               <span class="item-front">{c.front}</span>
               <div class="item-stats">
-                <span><Clock size={12}/> {c.interval}d</span>
-                <span><Calendar size={12}/> {formatDate(c.nextReview)}</span>
+                <span><Clock size={12}/> {c.interval === -1 ? 'PAUSADO' : c.interval + 'd'}</span>
+                <span><Calendar size={12}/> {c.interval === -1 ? '--' : formatDate(c.nextReview)}</span>
               </div>
             </div>
             <div class="item-actions">
+              <button class="btn-icon" onclick={() => toggleSuspend(c)} title={c.interval === -1 ? 'Retomar' : 'Pausar'}>
+                {#if c.interval === -1}<PlayCircle size={16}/>{:else}<PauseCircle size={16}/>{/if}
+              </button>
               <button class="btn-icon" onclick={() => editingCard = { ...c }}><Edit2 size={16}/></button>
               <button class="btn-icon btn-icon-danger" onclick={() => handleDelete(c.rowNumber, c.id)}><Trash2 size={16}/></button>
             </div>

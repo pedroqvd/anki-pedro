@@ -134,7 +134,7 @@
       if (currentCard) bulkOutput.push(formatCard(currentCard));
     }
 
-    return bulkOutput.join('\n\n\n');
+    return bulkOutput.join('\n\n---\n\n');
   }
 
   function formatCard(content: string) {
@@ -219,18 +219,26 @@
         showToast("Cole o texto para adição em lote!");
         return;
       }
-      // Split by '===' separator (suporta multi-linha: blocos separados por ===)
-      // Funciona tanto para formato 'Frente === Verso' em uma linha
-      // quanto para blocos separados por uma linha contendo apenas '==='
-      const rawBlocks = bulkText.split(/\n\s*===\s*\n/);
+      // Se tiver '---', foi gerado pelo OCR ou usuário usou separador explícito
+      let rawCards = bulkText.includes('---') ? bulkText.split(/\n?\s*---\s*\n?/) : [];
       
-      for (let bi = 0; bi < rawBlocks.length; bi++) {
-        const block = rawBlocks[bi];
-        // Tenta separar via === inline se não for bloco multi-linha
-        if (block.includes('===')) {
-          const sepIdx = block.indexOf('===');
-          const f = block.substring(0, sepIdx).trim();
-          const b = block.substring(sepIdx + 3).trim();
+      if (rawCards.length === 0) {
+        // Se tem múltiplos '===' e várias quebras de linha, separa por \n\n
+        if ((bulkText.match(/===/g) || []).length > 1 && bulkText.includes('\n\n')) {
+          rawCards = bulkText.split(/\n\s*\n+/);
+        } else {
+          // Fallback original: uma carta por linha ou bloco
+          rawCards = bulkText.split('\n');
+        }
+      }
+
+      for (const rc of rawCards) {
+        const rcTrim = rc.trim();
+        if (!rcTrim) continue;
+        if (rcTrim.includes('===')) {
+          const sepIdx = rcTrim.indexOf('===');
+          const f = rcTrim.substring(0, sepIdx).trim();
+          const b = rcTrim.substring(sepIdx + 3).trim();
           if (f && b) {
             cardsToAdd.push({
               id: "temp-" + Date.now() + Math.random(),
@@ -244,25 +252,6 @@
                 interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
               });
             }
-          }
-        } else if (bi + 1 < rawBlocks.length) {
-          // Bloco multi-linha: bloco atual é a frente, próximo é o verso
-          const f = block.trim();
-          const b = rawBlocks[bi + 1].trim();
-          if (f && b) {
-            cardsToAdd.push({
-              id: "temp-" + Date.now() + Math.random(),
-              front: f, back: b, topic: topicPath,
-              interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
-            });
-            if (createReversed) {
-              cardsToAdd.push({
-                id: "temp-" + Date.now() + Math.random(),
-                front: b, back: f, topic: topicPath,
-                interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
-              });
-            }
-            bi++; // pula o próximo bloco (já foi usado como verso)
           }
         }
       }

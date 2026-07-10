@@ -78,6 +78,20 @@ export async function addCardToSheet(front: string, back: string, topic: string)
   });
 }
 
+export async function addCardsToSheet(cards: {front: string, back: string, topic: string}[]): Promise<void> {
+  if (cards.length === 0) return;
+  const payloadCards = cards.map(c => ({
+    ...c,
+    interval: 0,
+    ease: 2.5,
+    nextReview: new Date().toISOString()
+  }));
+  await sendAction({
+    action: "add_bulk",
+    cards: payloadCards
+  });
+}
+
 export async function updateCardInSheet(card: Flashcard): Promise<void> {
   await sendAction({ action: "update", card });
 }

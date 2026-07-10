@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { fetchCardsFromSheet, updateCardInSheet, addCardToSheet, deleteCardFromSheet, loadCachedCards, setCachedCards, getApiUrl, type Flashcard } from "./lib/googleSheets";
+  import { fetchCardsFromSheet, updateCardInSheet, addCardToSheet, addCardsToSheet, deleteCardFromSheet, loadCachedCards, setCachedCards, getApiUrl, type Flashcard } from "./lib/googleSheets";
   import { calculateNextReview, type Grade } from "./lib/scheduler";
   import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic } from "./lib/edital";
   import { getStreak, recordStudyToday, getWeeklyActivity, getAnnualActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
@@ -56,9 +56,7 @@
     saveLocal();
     showToast(`${cardsToAdd.length} cartões salvos!`);
 
-    for (const c of cardsToAdd) {
-      await addCardToSheet(c.front, c.back, c.topic);
-    }
+    await addCardsToSheet(cardsToAdd);
     
     await silentSync();
     isSaving = false;
@@ -241,20 +239,26 @@
         if (!text.trim().startsWith('[') && !text.trim().startsWith('{')) {
           const lines = text.split('\n');
           let added = 0;
+          const cloudBatch = [];
           for (const line of lines) {
             const parts = line.split('\t'); // tab separated
             if (parts.length >= 2) {
               const front = parts[0].trim();
               const back = parts[1].trim();
               if (front && back) {
-                cards.push({
+                const newCard = {
                   id: "imported-" + Date.now() + Math.random(),
                   front, back, topic: "Geral > Importado > " + file.name.replace(/\.[^/.]+$/, ""),
                   interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
-                });
+                };
+                cards.push(newCard);
+                cloudBatch.push(newCard);
                 added++;
               }
             }
+          }
+          if (cloudBatch.length > 0) {
+            await addCardsToSheet(cloudBatch);
           }
           if (added > 0) {
             saveLocal();
@@ -272,15 +276,19 @@
           // Merge imported cards by ID
           const newCards = [...cards];
           let added = 0;
+          const cloudBatch = [];
           for (const ic of importedCards) {
             if (!newCards.find(c => c.id === ic.id)) {
               newCards.push(ic);
               added++;
               // Send to cloud if needed
               if (!ic.rowNumber || ic.rowNumber <= 0) {
-                 await addCardToSheet(ic.front, ic.back, ic.topic);
+                 cloudBatch.push(ic);
               }
             }
+          }
+          if (cloudBatch.length > 0) {
+            await addCardsToSheet(cloudBatch);
           }
           cards = newCards;
           saveLocal();

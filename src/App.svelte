@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { fetchCardsFromSheet, updateCardInSheet, addCardToSheet, deleteCardFromSheet, loadCachedCards, setCachedCards, getApiUrl, type Flashcard } from "./lib/googleSheets";
   import { calculateNextReview, type Grade } from "./lib/scheduler";
-  import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic, type Area } from "./lib/edital";
+  import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic } from "./lib/edital";
   import { getStreak, recordStudyToday, getWeeklyActivity, getAnnualActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
   import { processQueue, getPendingCount } from "./lib/offlineQueue";
   import { CheckCircle, X, Clock, Calendar } from "lucide-svelte";
@@ -168,18 +168,6 @@
     localStorage.setItem('anki_theme', theme);
   }
 
-  // ================= Funções Auxiliares =================
-  function readText(text: string) {
-    if (!('speechSynthesis' in window)) {
-      showToast("Seu navegador não suporta leitura em voz alta.");
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const msg = new SpeechSynthesisUtterance(text.replace(/<[^>]*>?/gm, ''));
-    msg.lang = 'pt-BR';
-    window.speechSynthesis.speak(msg);
-  }
-
   function handleStudyAnswer(card: Flashcard, grade: Grade) {
     if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     recordCardReviewed();
@@ -289,7 +277,7 @@
               newCards.push(ic);
               added++;
               // Send to cloud if needed
-              if (ic.rowNumber === -1 || ic.rowNumber === undefined) {
+              if (!ic.rowNumber || ic.rowNumber <= 0) {
                  await addCardToSheet(ic.front, ic.back, ic.topic);
               }
             }

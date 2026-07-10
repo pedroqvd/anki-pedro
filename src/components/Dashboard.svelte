@@ -46,7 +46,7 @@
       const reviewDate = new Date(c.nextReview);
       reviewDate.setHours(0,0,0,0);
       const diffTime = reviewDate.getTime() - today.getTime();
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24)); // Math.round (not ceil)
       if (diffDays >= 0 && diffDays < 7) {
         counts[diffDays]++;
       } else if (diffDays < 0) {
@@ -180,8 +180,9 @@
     <h3 class="section-title">Atividade (Passado)</h3>
     <div class="chart">
       {#each weeklyActivity as count, i}
+        {@const maxWeekly = Math.max(...weeklyActivity, 1)}
         <div class="chart-bar-col">
-          <div class="chart-bar" style="height: {Math.max(count * 8, 4)}px"></div>
+          <div class="chart-bar" style="height: {Math.max(Math.round((count / maxWeekly) * 80), 4)}px"></div>
           <span class="chart-label">{weekDayLabels[i]}</span>
         </div>
       {/each}
@@ -193,8 +194,9 @@
     <h3 class="section-title"><CalendarClock size={16} style="display:inline; vertical-align:text-bottom; margin-right:4px;"/> Previsão (Futuro)</h3>
     <div class="chart">
       {#each next7Days.counts as count, i}
+        {@const maxForecast = Math.max(...next7Days.counts, 1)}
         <div class="chart-bar-col">
-          <div class="chart-bar" style="height: {Math.max(count * 8, 4)}px; background: var(--accent);"></div>
+          <div class="chart-bar" style="height: {Math.max(Math.round((count / maxForecast) * 80), 4)}px; background: var(--accent);"></div>
           <span class="chart-label">{next7Days.labels[i]}</span>
         </div>
       {/each}

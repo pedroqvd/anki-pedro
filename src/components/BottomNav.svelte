@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { LayoutDashboard, BookOpen, PlusCircle, Settings } from 'lucide-svelte';
+  import { LayoutDashboard, BookOpen, PlusCircle, ListFilter } from 'lucide-svelte';
   
   let { activeTab = $bindable() } = $props<{ activeTab: string }>();
 </script>
@@ -15,6 +15,6 @@
     <div class="add-fab"><PlusCircle size={26}/></div><span>Add</span>
   </button>
   <button class:active={activeTab === 'manage'} onclick={() => activeTab = 'manage'}>
-    <Settings size={22}/><span>Gerenciar</span>
+    <ListFilter size={22}/><span>Gerenciar</span>
   </button>
 </nav>

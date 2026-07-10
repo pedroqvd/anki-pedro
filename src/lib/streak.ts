@@ -21,14 +21,18 @@ export interface AnswerHistory {
   incorrect: number; // grades 0, 1
 }
 
+function getLocalDateString(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function today(): string {
-  return new Date().toISOString().split('T')[0];
+  return getLocalDateString(new Date());
 }
 
 function yesterday(): string {
   const d = new Date();
   d.setDate(d.getDate() - 1);
-  return d.toISOString().split('T')[0];
+  return getLocalDateString(d);
 }
 
 // ==================== STREAK ====================
@@ -83,7 +87,7 @@ export function getWeeklyActivity(): number[] {
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const key = d.toISOString().split('T')[0];
+      const key = getLocalDateString(d);
       result.push(activity[key] || 0);
     }
     return result;
@@ -102,7 +106,7 @@ export function recordCardReviewed(): void {
     // Limpa dados com mais de 365 dias para o mapa de calor anual
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - 365);
-    const cutoffStr = cutoff.toISOString().split('T')[0];
+    const cutoffStr = getLocalDateString(cutoff);
     for (const key of Object.keys(activity)) {
       if (key < cutoffStr) delete activity[key];
     }
@@ -171,7 +175,7 @@ export function getAnnualActivity(): { date: string, count: number, empty?: bool
     for (let i = 364; i >= 0; i--) {
       const cur = new Date();
       cur.setDate(cur.getDate() - i);
-      const key = cur.toISOString().split('T')[0];
+      const key = getLocalDateString(cur);
       result.push({ date: key, count: activity[key] || 0 });
     }
     return result;

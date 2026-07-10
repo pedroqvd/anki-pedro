@@ -21,17 +21,18 @@ export function calculateNextReview(current: CardState, grade: Grade): CardState
     } else if (interval === 1) {
       interval = 6;
     } else {
-      interval = Math.round(interval * ease);
-    }
-    
-    if (grade === 1) {
-      // Difícil
-      ease = Math.max(1.3, ease - 0.15);
-      interval = Math.round(interval * 1.2);
-    } else if (grade === 3) {
-      // Fácil
-      ease += 0.15;
-      interval = Math.round(interval * 1.3);
+      if (grade === 1) {
+        // Difícil
+        ease = Math.max(1.3, ease - 0.15);
+        interval = Math.round(interval * 1.2);
+      } else if (grade === 2) {
+        // Bom
+        interval = Math.round(interval * ease);
+      } else if (grade === 3) {
+        // Fácil
+        ease += 0.15;
+        interval = Math.round(interval * ease * 1.3);
+      }
     }
   }
 

@@ -183,6 +183,18 @@
     lastAnswered = null;
   }
 
+  // ================= Funções Auxiliares =================
+  function readText(text: string) {
+    if (!('speechSynthesis' in window)) {
+      showToast("Seu navegador não suporta leitura em voz alta.");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const msg = new SpeechSynthesisUtterance(text.replace(/<[^>]*>?/gm, ''));
+    msg.lang = 'pt-BR';
+    window.speechSynthesis.speak(msg);
+  }
+
   // ================= Atalhos de Teclado =================
   function handleKeydown(e: KeyboardEvent) {
     if (activeElementIsInput()) return; // não disparar se tiver digitando no input de busca

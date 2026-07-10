@@ -216,6 +216,16 @@ label { display: block; font-size: 0.75rem; font-weight: 700; color: var(--text-
 /* Keeps compatibility with any remaining global usage */
 .tts-btn { position: absolute; top: 1.25rem; right: 1.25rem; color: var(--text-muted); }
 
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), #6d28d9);
+  border: none; color: white; padding: 15px 24px; border-radius: 14px;
+  font-weight: 700; font-size: 1rem; font-family: inherit;
+  cursor: pointer; width: 100%;
+  box-shadow: 0 8px 24px var(--accent-glow);
+  transition: transform 0.1s, opacity 0.15s, box-shadow 0.2s;
+}
+.btn-primary:active { transform: scale(0.97); opacity: 0.9; box-shadow: 0 4px 12px var(--accent-glow); }
+
 /* ================================================================
    FORM / ADD TAB
    ================================================================ */

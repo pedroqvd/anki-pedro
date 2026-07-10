@@ -1,18 +1,7 @@
 <script lang="ts">
   import { Search, Upload, Download, Edit2, Trash2, Clock, Calendar, PauseCircle, PlayCircle } from "lucide-svelte";
-
-  // Since we only need the type, not the implementation
-  interface Flashcard {
-    id: string;
-    topic: string;
-    front: string;
-    back: string;
-    interval: number;
-    repetition: number;
-    efactor: number;
-    nextReview: string;
-    rowNumber: number;
-  }
+  import { getDisciplineFromPath } from '../lib/edital';
+  import type { Flashcard } from '../lib/googleSheets';
 
   let { 
     filteredManageCards, 
@@ -35,9 +24,6 @@
   function formatDate(iso: string) {
     const d = new Date(iso);
     return `${d.getDate()}/${d.getMonth()+1}`;
-  }
-  function getDisciplineFromPath(path: string) {
-    return path.split('/')[0] || path;
   }
 </script>
 

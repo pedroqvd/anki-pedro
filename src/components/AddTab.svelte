@@ -27,6 +27,7 @@
   let errorTheory = $state('');
   let bulkText = $state('');
   let createReversed = $state(false);
+  let frontTextarea: HTMLTextAreaElement;
   
   let ocrProgress = $state(0);
   let isScanning = $state(false);
@@ -218,28 +219,55 @@
         showToast("Cole o texto para adição em lote!");
         return;
       }
-      const lines = bulkText.split('\n');
-      for (const line of lines) {
-        if (line.includes('===')) {
-          const [f, b] = line.split('===');
-          if (f.trim() && b.trim()) {
+      // Split by '===' separator (suporta multi-linha: blocos separados por ===)
+      // Funciona tanto para formato 'Frente === Verso' em uma linha
+      // quanto para blocos separados por uma linha contendo apenas '==='
+      const rawBlocks = bulkText.split(/\n\s*===\s*\n/);
+      
+      for (let bi = 0; bi < rawBlocks.length; bi++) {
+        const block = rawBlocks[bi];
+        // Tenta separar via === inline se não for bloco multi-linha
+        if (block.includes('===')) {
+          const sepIdx = block.indexOf('===');
+          const f = block.substring(0, sepIdx).trim();
+          const b = block.substring(sepIdx + 3).trim();
+          if (f && b) {
             cardsToAdd.push({
               id: "temp-" + Date.now() + Math.random(),
-              front: f.trim(), back: b.trim(), topic: topicPath,
+              front: f, back: b, topic: topicPath,
               interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
             });
             if (createReversed) {
               cardsToAdd.push({
                 id: "temp-" + Date.now() + Math.random(),
-                front: b.trim(), back: f.trim(), topic: topicPath,
+                front: b, back: f, topic: topicPath,
                 interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
               });
             }
           }
+        } else if (bi + 1 < rawBlocks.length) {
+          // Bloco multi-linha: bloco atual é a frente, próximo é o verso
+          const f = block.trim();
+          const b = rawBlocks[bi + 1].trim();
+          if (f && b) {
+            cardsToAdd.push({
+              id: "temp-" + Date.now() + Math.random(),
+              front: f, back: b, topic: topicPath,
+              interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
+            });
+            if (createReversed) {
+              cardsToAdd.push({
+                id: "temp-" + Date.now() + Math.random(),
+                front: b, back: f, topic: topicPath,
+                interval: 0, ease: 2.5, nextReview: new Date().toISOString(), rowNumber: -1
+              });
+            }
+            bi++; // pula o próximo bloco (já foi usado como verso)
+          }
         }
       }
       if (cardsToAdd.length === 0) {
-        showToast("Nenhum cartão válido encontrado (use ===)");
+        showToast("Nenhum cartão válido encontrado (use === para separar frente e verso)");
         return;
       }
     }
@@ -297,9 +325,9 @@
     {#if addMode === 'single'}
       <label style="display: flex; align-items: center; justify-content: space-between;">
         <span>Pergunta (Frente)</span>
-        <button class="cloze-btn" onclick={() => newFront += '{{}}'} title="Adicionar lacuna (Cloze)">[..] Ocultar Palavra</button>
+        <button class="cloze-btn" onclick={insertCloze} title="Selecione uma palavra e clique para ocultar">[..] Ocultar Palavra</button>
       </label>
-      <textarea class="input" placeholder="Digite a pergunta... (use {{palavra}} para ocultar)" bind:value={newFront}></textarea>
+      <textarea class="input" placeholder="Digite a pergunta... (use {{palavra}} para ocultar)" bind:value={newFront} bind:this={frontTextarea}></textarea>
 
       <label>Resposta (Verso)</label>
       <textarea class="input" placeholder="Digite a resposta..." bind:value={newBack}></textarea>

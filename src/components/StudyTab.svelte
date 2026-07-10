@@ -4,6 +4,7 @@
   import type { Flashcard } from '../lib/googleSheets';
   import { marked } from 'marked';
   import { Zap, Timer, RotateCcw, Volume2, Sparkles } from 'lucide-svelte';
+  import { onDestroy } from 'svelte';
 
   let { 
     cards = $bindable(), 
@@ -82,6 +83,10 @@
     pomodoroActive = false;
     pomodoroTime = 25 * 60;
   }
+
+  onDestroy(() => {
+    if (pomodoroInterval) clearInterval(pomodoroInterval);
+  });
 
   // ================= Gestos Mobile (Swipe) =================
   let touchStartX = $state(0);

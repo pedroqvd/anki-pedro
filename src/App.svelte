@@ -5,8 +5,7 @@
   import { EDITAL, getAllDisciplines, getDisciplineFromPath, parseTopic, type Area } from "./lib/edital";
   import { getStreak, recordStudyToday, getWeeklyActivity, getAnnualActivity, recordCardReviewed, recordAnswer, getAccuracyRate, getWeekDayLabels } from "./lib/streak";
   import { processQueue, getPendingCount } from "./lib/offlineQueue";
-  import { BookOpen, PlusCircle, Settings, Trash2, CheckCircle, Sparkles, Search, Edit2, Clock, Calendar, X, Sun, Moon, LayoutDashboard, Flame, TrendingUp, Target, WifiOff, Download, Upload, Volume2, RotateCcw, Zap, PauseCircle, PlayCircle, Timer } from "lucide-svelte";
-  import { marked } from 'marked';
+  import { CheckCircle, X, Clock, Calendar } from "lucide-svelte";
   import Dashboard from './components/Dashboard.svelte';
   import BottomNav from './components/BottomNav.svelte';
   import ManageTab from './components/ManageTab.svelte';
@@ -182,6 +181,7 @@
   }
 
   function handleStudyAnswer(card: Flashcard, grade: Grade) {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
     recordCardReviewed();
     recordAnswer(grade);
     const s = recordStudyToday();

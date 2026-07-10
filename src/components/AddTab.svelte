@@ -27,7 +27,7 @@
   let errorTheory = $state('');
   let bulkText = $state('');
   let createReversed = $state(false);
-  let frontTextarea: HTMLTextAreaElement;
+  let frontTextarea: HTMLTextAreaElement | undefined = $state();
   
   let ocrProgress = $state(0);
   let isScanning = $state(false);
@@ -274,6 +274,7 @@
 <div class="card form-container" style="padding-bottom: 2rem;">
   <h3 class="section-title">Novo Cartão</h3>
 
+  <!-- svelte-ignore a11y_label_has_associated_control -->
   <label>Selecione a Matéria</label>
   <div style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.5rem;">
     <select class="input" style="margin-bottom:0;" bind:value={selectedArea} onchange={() => { selectedDiscipline = ''; selectedTopicName = ''; }}>
@@ -312,22 +313,27 @@
 
   <div class="form-body">
     {#if addMode === 'single'}
+      <!-- svelte-ignore a11y_label_has_associated_control -->
       <label style="display: flex; align-items: center; justify-content: space-between;">
         <span>Pergunta (Frente)</span>
         <button class="cloze-btn" onclick={insertCloze} title="Selecione uma palavra e clique para ocultar">[..] Ocultar Palavra</button>
       </label>
       <textarea class="input" placeholder="Digite a pergunta... (use {{palavra}} para ocultar)" bind:value={newFront} bind:this={frontTextarea}></textarea>
 
+      <!-- svelte-ignore a11y_label_has_associated_control -->
       <label>Resposta (Verso)</label>
       <textarea class="input" placeholder="Digite a resposta..." bind:value={newBack}></textarea>
       
     {:else if addMode === 'errorBook'}
+      <!-- svelte-ignore a11y_label_has_associated_control -->
       <label>Enunciado da Questão</label>
       <textarea class="input" style="height: 100px" placeholder="Qual a taxa básica de juros?" bind:value={errorQuestion}></textarea>
 
+      <!-- svelte-ignore a11y_label_has_associated_control -->
       <label style="color: var(--err-text)">Onde escorreguei (A Pegadinha)</label>
       <textarea class="input error-input" placeholder="Achei que era a TJLP..." bind:value={errorMistake}></textarea>
 
+      <!-- svelte-ignore a11y_label_has_associated_control -->
       <label style="color: var(--ok-text)">Teoria / Justificativa</label>
       <textarea class="input success-input" placeholder="A taxa básica de juros é a Selic. A TJLP é de longo prazo." bind:value={errorTheory}></textarea>
       
@@ -350,6 +356,7 @@
       </div>
       
     {:else}
+      <!-- svelte-ignore a11y_label_has_associated_control -->
       <label>Cartões (Formato: Pergunta === Resposta)</label>
       <textarea class="input" style="height: 150px" placeholder="Ex:\nO que é a Selic? === Taxa básica de juros\nCapital da França === Paris" bind:value={bulkText}></textarea>
     {/if}

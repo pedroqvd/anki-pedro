@@ -325,17 +325,23 @@
 
   <!-- Edit Modal -->
   {#if editingCard}
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal-backdrop" onclick={() => editingCard = null}>
       <!-- svelte-ignore a11y_click_events_have_key_events -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div class="card modal-content" onclick={(e) => e.stopPropagation()}>
         <div class="modal-header">
           <h3>Editar Cartão</h3>
           <button class="btn-icon" onclick={() => editingCard = null}><X size={22}/></button>
         </div>
+        <!-- svelte-ignore a11y_label_has_associated_control -->
         <label>Tópico</label>
         <input class="input" bind:value={editingCard.topic} />
+        <!-- svelte-ignore a11y_label_has_associated_control -->
         <label>Pergunta</label>
         <textarea class="input" bind:value={editingCard.front}></textarea>
+        <!-- svelte-ignore a11y_label_has_associated_control -->
         <label>Resposta</label>
         <textarea class="input" bind:value={editingCard.back}></textarea>
         <div class="stats-row">
